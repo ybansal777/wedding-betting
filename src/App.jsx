@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isConfigured } from "./lib/supabase";
-import { balanceFor, buildLeaderboard } from "./lib/odds";
+import { balanceFor } from "./lib/odds";
 import FloralCorners from "./components/FloralCorners";
 import Header from "./components/Header";
 import BalanceCard from "./components/BalanceCard";
@@ -35,7 +35,8 @@ export default function App() {
   // Name is intentionally NOT persisted — each page load starts "logged out".
   const [name, setName] = useState("");
   const [questions, setQuestions] = useState([]);
-  const [bets, setBets] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]); // aggregated, from the DB view
+  const [myBets, setMyBets] = useState([]); // only THIS guest's confirmed bets
   const [loading, setLoading] = useState(true);
   const [adminView, setAdminView] = useState(false);
   const [adminInput, setAdminInput] = useState("");
@@ -43,36 +44,105 @@ export default function App() {
   // { [questionId]: { optionId, wager, odds, label } }
   const [staged, setStaged] = useState({});
 
-  // ---- data loading + realtime -------------------------------------------
-  const load = useCallback(async () => {
-    if (!supabase) return;
-    const [{ data: qs }, { data: bs }] = await Promise.all([
-      supabase.from("questions").select("*").order("sort").order("created_at"),
-      supabase.from("bets").select("*"),
-    ]);
-    setQuestions(qs || []);
-    setBets(bs || []);
-    setLoading(false);
+  const trimmed = name.trim().toLowerCase();
+  const nameReady = trimmed.length > 0;
+
+  // ---- data loading (polling, no persistent websockets) ------------------
+  // Each resource is fetched through guarded() so polls never stack (skip while
+  // a request is in flight) and rapid triggers coalesce (throttle window). This
+  // is the polling-world version of "don't refetch the world on every event".
+  const inFlight = useRef({});
+  const lastFetch = useRef({});
+
+  const guarded = useCallback(async (key, throttleMs, force, fn) => {
+    if (!supabase || inFlight.current[key]) return;
+    const now = Date.now();
+    if (!force && now - (lastFetch.current[key] || 0) < throttleMs) return;
+    inFlight.current[key] = true;
+    try {
+      await fn();
+      lastFetch.current[key] = Date.now();
+    } finally {
+      inFlight.current[key] = false;
+    }
   }, []);
 
+  // Questions change rarely (admin adds/settles) → polled slowly.
+  const fetchQuestions = useCallback(
+    (force = false) =>
+      guarded("questions", 10000, force, async () => {
+        const { data } = await supabase
+          .from("questions")
+          .select("*")
+          .order("sort")
+          .order("created_at");
+        if (data) setQuestions(data);
+        setLoading(false);
+      }),
+    [guarded]
+  );
+
+  // The small aggregated leaderboard (one row per player) → polled a bit faster.
+  const fetchLeaderboard = useCallback(
+    (force = false) =>
+      guarded("leaderboard", 8000, force, async () => {
+        const { data } = await supabase.from("leaderboard").select("*");
+        if (data) setLeaderboard(data);
+      }),
+    [guarded]
+  );
+
+  // Just the current guest's own confirmed bets (tiny — at most one per question).
+  const loadMine = useCallback(
+    () =>
+      guarded("mine", 0, true, async () => {
+        const who = name.trim();
+        if (!who) {
+          setMyBets([]);
+          return;
+        }
+        const { data } = await supabase
+          .from("bets")
+          .select("*")
+          .ilike("guest_name", who);
+        setMyBets(data || []);
+      }),
+    [guarded, name]
+  );
+
+  // Initial load + gentle, split-cadence polling. Everything pauses while the
+  // tab is hidden (most phones at a wedding are backgrounded) and refreshes
+  // when it returns — the throttle stops that from double-firing with the timer.
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
       return;
     }
-    load();
-    const channel = supabase
-      .channel("wedding-bets")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bets" }, load)
-      .on("postgres_changes", { event: "*", schema: "public", table: "questions" }, load)
-      .subscribe();
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      supabase.removeChannel(channel);
-      window.removeEventListener("focus", onFocus);
+    fetchQuestions(true);
+    fetchLeaderboard(true);
+    const lbId = setInterval(() => {
+      if (document.visibilityState === "visible") fetchLeaderboard();
+    }, 30000);
+    const qId = setInterval(() => {
+      if (document.visibilityState === "visible") fetchQuestions();
+    }, 60000);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      fetchLeaderboard();
+      fetchQuestions();
     };
-  }, [load]);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(lbId);
+      clearInterval(qId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [fetchQuestions, fetchLeaderboard]);
+
+  // Refetch the guest's own bets whenever they log in / change name.
+  useEffect(() => {
+    loadMine();
+  }, [loadMine]);
 
   const onChangeName = (v) => {
     setName(v);
@@ -91,20 +161,10 @@ export default function App() {
     [winnerById]
   );
 
-  const trimmed = name.trim().toLowerCase();
-  const myBets = useMemo(
-    () => bets.filter((b) => b.guest_name.trim().toLowerCase() === trimmed),
-    [bets, trimmed]
-  );
   // Balance from CONFIRMED bets (what's actually in the DB).
   const confirmedBalance = useMemo(
     () => balanceFor(myBets.map(enrich)),
     [myBets, enrich]
-  );
-  // Leaderboard / admin standings: everyone with at least one confirmed bet.
-  const leaderboard = useMemo(
-    () => buildLeaderboard(bets.map(enrich)),
-    [bets, enrich]
   );
   const pendingCount = myBets.filter((b) => !winnerById[b.question_id]).length;
   const myBetByQ = useMemo(() => {
@@ -136,8 +196,6 @@ export default function App() {
     [staged, questions]
   );
 
-  const nameReady = trimmed.length > 0;
-
   // ---- staging (local, not yet persisted) --------------------------------
   const clampWager = (qid, w) =>
     Math.max(1, Math.min(Math.floor(w) || 1, maxWagerFor(qid)));
@@ -167,31 +225,71 @@ export default function App() {
     });
 
   // ---- mutations ----------------------------------------------------------
-  // Persist every staged bet at once (the "Place Bets" action).
+  // Persist every staged bet (the "Place Bets" action). Happy path is a single
+  // batch insert; if that hits a duplicate (e.g. the guest already bet on one
+  // of these from another device), fall back to per-row inserts so one conflict
+  // doesn't sink the whole slip.
   const placeBets = async () => {
-    const rows = Object.entries(staged).map(([questionId, s]) => ({
+    const entries = Object.entries(staged);
+    if (entries.length === 0) return false;
+    const rowFor = ([questionId, s]) => ({
       guest_name: name.trim(),
       question_id: questionId,
       pick: s.optionId,
       pick_label: s.label,
       wager: s.wager,
       odds_at_bet: s.odds,
-    }));
-    if (rows.length === 0) return false;
+    });
 
-    const { error } = await supabase.from("bets").insert(rows);
-    if (error) {
-      notify(
-        error.code === "23505"
-          ? "Looks like you already bet on one of these — refresh and try again."
-          : `Couldn't place your bets: ${error.message}`,
-        { tone: "error" }
-      );
+    const { error } = await supabase.from("bets").insert(entries.map(rowFor));
+
+    if (!error) {
+      setStaged({});
+      await Promise.all([loadMine(), fetchLeaderboard(true)]);
+      notify("Bets placed — good luck!", { tone: "success" });
+      return true;
+    }
+    if (error.code !== "23505") {
+      notify(`Couldn't place your bets: ${error.message}`, { tone: "error" });
       return false;
     }
-    setStaged({});
-    await load();
-    notify("Bets placed — good luck!", { tone: "success" });
+
+    // Duplicate in the batch (batch is atomic, so nothing was inserted). Retry
+    // each row on its own; new ones land, already-placed ones report 23505.
+    const results = await Promise.all(
+      entries.map(async (e) => {
+        const { error: err } = await supabase.from("bets").insert(rowFor(e));
+        return { questionId: e[0], err };
+      })
+    );
+    const failed = results.filter((r) => r.err && r.err.code !== "23505");
+    const placed = results.filter((r) => !r.err).length;
+    const dupes = results.filter((r) => r.err && r.err.code === "23505").length;
+
+    // Keep only rows that hit a real (non-duplicate) error so they can retry.
+    setStaged((prev) => {
+      const next = {};
+      for (const r of failed) if (prev[r.questionId]) next[r.questionId] = prev[r.questionId];
+      return next;
+    });
+    await Promise.all([loadMine(), fetchLeaderboard(true)]);
+
+    if (failed.length) {
+      notify(`Placed ${placed}. Couldn't place ${failed.length} — try again.`, {
+        tone: "error",
+      });
+      return false;
+    }
+    if (placed > 0) {
+      notify(
+        `Placed ${placed} bet${placed === 1 ? "" : "s"}${
+          dupes ? ` · ${dupes} already on the board` : ""
+        }.`,
+        { tone: "success" }
+      );
+    } else {
+      notify("Those bets were already on the board.", { tone: "info" });
+    }
     return true;
   };
 
@@ -210,7 +308,7 @@ export default function App() {
       notify(`Couldn't add the question: ${error.message}`, { tone: "error" });
       return false;
     }
-    await load();
+    await Promise.all([fetchQuestions(true), fetchLeaderboard(true)]);
     return true;
   };
 
@@ -221,7 +319,7 @@ export default function App() {
       .eq("id", questionId);
     if (error)
       notify(`Couldn't set the winner: ${error.message}`, { tone: "error" });
-    else await load();
+    else await Promise.all([fetchQuestions(true), fetchLeaderboard(true)]);
   };
 
   const updateQuestion = async (questionId, fields) => {
@@ -238,7 +336,7 @@ export default function App() {
       notify(`Couldn't save the question: ${error.message}`, { tone: "error" });
       return false;
     }
-    await load();
+    await Promise.all([fetchQuestions(true), fetchLeaderboard(true)]);
     return true;
   };
 
@@ -251,7 +349,7 @@ export default function App() {
       notify(`Couldn't delete the question: ${error.message}`, { tone: "error" });
       return false;
     }
-    await load();
+    await Promise.all([fetchQuestions(true), fetchLeaderboard(true)]);
     return true;
   };
 

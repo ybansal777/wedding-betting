@@ -62,11 +62,58 @@ create policy "bets insert" on public.bets for insert with check (true);
 -- (No update/delete policy on bets: confirmed bets are final.)
 
 -- ---------------------------------------------------------------------------
--- Realtime — push live leaderboard / settlement updates to every phone.
+-- Aggregated leaderboard (computed server-side)
+--
+-- Clients poll this instead of downloading the whole bets table, which keeps
+-- egress tiny and lets the app comfortably handle hundreds of guests at once.
+-- Balance math mirrors src/lib/odds.js: start at 100, subtract every wager, and
+-- add back the full return (stake × multiplier) on settled winning bets.
 -- ---------------------------------------------------------------------------
 
-alter publication supabase_realtime add table public.questions;
-alter publication supabase_realtime add table public.bets;
+create or replace function public.odds_multiplier(odds text)
+  returns numeric
+  language plpgsql
+  immutable
+as $$
+declare
+  n int;
+begin
+  begin
+    n := odds::int;
+  exception when others then
+    return 1;          -- malformed odds → even money
+  end;
+  if n is null or n = 0 then
+    return 1;
+  elsif n > 0 then
+    return 1 + n / 100.0;
+  else
+    return 1 + 100.0 / abs(n);
+  end if;
+end;
+$$;
+
+create or replace view public.leaderboard as
+select
+  max(b.guest_name)                                              as name,
+  (100
+     - sum(b.wager)
+     + sum(
+         case when q.winner = b.pick
+           then round(b.wager * public.odds_multiplier(b.odds_at_bet))
+           else 0
+         end
+       )
+  )::int                                                         as balance,
+  count(*)::int                                                  as bet_count
+from public.bets b
+join public.questions q on q.id = b.question_id
+group by lower(b.guest_name)
+order by balance desc;
+
+-- Expose the view + helper to the public (anon) API role.
+grant select on public.leaderboard to anon, authenticated;
+grant execute on function public.odds_multiplier(text) to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Optional starter question (delete or edit from the admin panel).
