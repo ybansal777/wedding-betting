@@ -3,74 +3,105 @@
 @tailwind utilities;
 
 @layer base {
-  * {
-    @apply transition-colors duration-200;
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-cream text-mauve-deep font-sans antialiased;
+    /* Warm cream wash with a faint blush glow in the corners, echoing the
+       watercolour florals of the wardrobe guide. */
+    background-color: #faf5e9;
+    background-image:
+      radial-gradient(
+        80% 55% at 100% 0%,
+        rgba(217, 156, 166, 0.16) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        80% 55% at 0% 100%,
+        rgba(163, 177, 138, 0.14) 0%,
+        transparent 60%
+      );
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  /* Number inputs: drop the spinner clutter on mobile. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  /* Raised paper card with a soft double rule, like a stationery frame. */
+  .card {
+    @apply rounded-[1.6rem] bg-cream-card shadow-soft;
+    border: 1px solid rgba(107, 78, 94, 0.1);
+    box-shadow:
+      0 10px 30px -12px rgba(107, 78, 94, 0.22),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  }
+
+  /* Letter-spaced small caps used for section labels (e.g. WELCOME PARTY). */
+  .eyebrow {
+    @apply font-sans font-semibold uppercase text-mauve;
+    font-size: 0.66rem;
+    letter-spacing: 0.22em;
+  }
+
+  /* Primary action — warm blush gradient with a quiet sheen. */
+  .btn-primary {
+    @apply rounded-2xl font-sans font-bold text-cream-card shadow-soft;
+    background-image: linear-gradient(135deg, #d99ca6 0%, #c27c88 100%);
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      filter 0.18s ease;
+  }
+  .btn-primary:not(:disabled):hover {
+    @apply shadow-lift;
+    filter: brightness(1.04);
+  }
+  .btn-primary:not(:disabled):active {
+    transform: scale(0.97);
+  }
+  .btn-primary:disabled {
+    @apply opacity-50;
   }
 }
 
 @layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.3s ease-in;
+  /* Ornamental scalloped divider with a centred diamond, à la the guide. */
+  .scallop-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgba(155, 138, 160, 0.5);
   }
-  
-  .animate-slide-up {
-    animation: slideUp 0.4s ease-out;
+  .scallop-divider::before,
+  .scallop-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(155, 138, 160, 0.45),
+      transparent
+    );
   }
-  
-  .animate-bounce-in {
-    animation: bounceIn 0.5s ease-out;
-  }
-  
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-  
-  @keyframes slideUp {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  @keyframes bounceIn {
-    0% {
-      opacity: 0;
-      transform: scale(0.8);
-    }
-    50% {
-      transform: scale(1.05);
-    }
-    100% {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-  
-  .glass-effect {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  
-  .gradient-gold {
-    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  }
-  
-  .gradient-rose {
-    background: linear-gradient(135deg, #fda4af 0%, #fb7185 100%);
-  }
-  
-  .gradient-wedding {
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%);
+
+  .text-shadow-soft {
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 }
-

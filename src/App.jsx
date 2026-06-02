@@ -1,454 +1,348 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase, isConfigured } from "./lib/supabase";
+import { balanceFor, buildLeaderboard } from "./lib/odds";
+import FloralCorners from "./components/FloralCorners";
+import Header from "./components/Header";
+import BalanceCard from "./components/BalanceCard";
+import BetCard from "./components/BetCard";
+import Leaderboard from "./components/Leaderboard";
+import AdminPanel from "./components/AdminPanel";
+import { useToast } from "./components/Toast";
 
-const STARTING_BANKROLL = 100;
+const ADMIN_KEY = import.meta.env.VITE_ADMIN_KEY || "wedding-admin-2026";
+const SITE_URL =
+  import.meta.env.VITE_SITE_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "");
 
-const ADMIN_KEY = "wedding-admin-2026"; // change before deploying
+export default function App() {
+  const notify = useToast();
 
-const americanToMultiplier = (odds) => {
-  const num = parseInt(odds);
-  if (isNaN(num)) return 1;
-  return num > 0 ? 1 + num / 100 : 1 + 100 / Math.abs(num);
-};
-
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-  }).format(amount);
-};
-
-export default function WeddingBettingOdds() {
-  const [bets, setBets] = useState([
-    {
-      question: "Who will cry first?",
-      optionA: "Nikesh",
-      optionB: "Richa",
-      oddsA: "+150",
-      oddsB: "+250",
-      winner: null,
-    },
-  ]);
-
-  const [guestName, setGuestName] = useState("");
-  const [picks, setPicks] = useState({});
-  const [stake, setStake] = useState(10);
-  const [submissions, setSubmissions] = useState([]);
-  const [locked, setLocked] = useState(false);
+  // Name is intentionally NOT persisted — each page load starts "logged out".
+  const [name, setName] = useState("");
+  const [questions, setQuestions] = useState([]);
+  const [bets, setBets] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [adminView, setAdminView] = useState(false);
   const [adminInput, setAdminInput] = useState("");
 
-  const [newBet, setNewBet] = useState({
-    question: "",
-    optionA: "",
-    optionB: "",
-    oddsA: "+100",
-    oddsB: "+100",
-  });
-
-  const remaining = STARTING_BANKROLL - stake * Object.keys(picks).length;
-
-  const togglePick = (betIndex, option) => {
-    if (locked) return;
-    setPicks({ ...picks, [betIndex]: option });
-  };
-
-  const submitBet = () => {
-    if (!guestName.trim()) {
-      alert("Please enter your name");
-      return;
-    }
-    if (remaining < 0) {
-      alert("Not enough bankroll. Please adjust your bets.");
-      return;
-    }
-    if (Object.keys(picks).length === 0) {
-      alert("Please make at least one pick");
-      return;
-    }
-
-    setSubmissions([
-      ...submissions,
-      { name: guestName, picks, bankroll: STARTING_BANKROLL },
+  // ---- data loading + realtime -------------------------------------------
+  const load = useCallback(async () => {
+    if (!supabase) return;
+    const [{ data: qs }, { data: bs }] = await Promise.all([
+      supabase.from("questions").select("*").order("sort").order("created_at"),
+      supabase.from("bets").select("*"),
     ]);
-    setLocked(true);
-  };
+    setQuestions(qs || []);
+    setBets(bs || []);
+    setLoading(false);
+  }, []);
 
-  const setWinner = (index, option) => {
-    const updated = [...bets];
-    updated[index].winner = option;
-    setBets(updated);
-
-    const recalculated = submissions.map((s) => {
-      let bankroll = STARTING_BANKROLL;
-      Object.entries(s.picks).forEach(([i, pick]) => {
-        bankroll -= stake;
-        if (updated[i].winner === pick) {
-          const odds = pick === "A" ? updated[i].oddsA : updated[i].oddsB;
-          bankroll += stake * americanToMultiplier(odds);
-        }
-      });
-      return { ...s, bankroll: Math.round(bankroll) };
-    });
-
-    setSubmissions(recalculated);
-  };
-
-  const addQuestion = () => {
-    if (!newBet.question || !newBet.optionA || !newBet.optionB) {
-      return alert("Fill out all fields");
+  useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
     }
+    load();
+    const channel = supabase
+      .channel("wedding-bets")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bets" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "questions" }, load)
+      .subscribe();
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load]);
 
-    setBets([...bets, { ...newBet, winner: null }]);
-    setNewBet({ question: "", optionA: "", optionB: "", oddsA: "+100", oddsB: "+100" });
+  const onChangeName = (v) => setName(v);
+
+  // ---- derived state ------------------------------------------------------
+  const winnerById = useMemo(() => {
+    const m = {};
+    for (const q of questions) m[q.id] = q.winner;
+    return m;
+  }, [questions]);
+
+  const enrich = useCallback(
+    (b) => ({ ...b, winner: winnerById[b.question_id] ?? null }),
+    [winnerById]
+  );
+
+  const trimmed = name.trim().toLowerCase();
+  const myBets = useMemo(
+    () => bets.filter((b) => b.guest_name.trim().toLowerCase() === trimmed),
+    [bets, trimmed]
+  );
+  const myBalance = useMemo(
+    () => balanceFor(myBets.map(enrich)),
+    [myBets, enrich]
+  );
+  // Full standings (every player with at least one bet) — used by the admin.
+  const standings = useMemo(
+    () => buildLeaderboard(bets.map(enrich)),
+    [bets, enrich]
+  );
+  // Public leaderboard: only players who have bet on EVERY question.
+  const leaderboard = useMemo(
+    () =>
+      questions.length === 0
+        ? []
+        : standings.filter((e) => e.bets.length >= questions.length),
+    [standings, questions.length]
+  );
+  const pendingCount = myBets.filter((b) => !winnerById[b.question_id]).length;
+  const myBetByQ = useMemo(() => {
+    const m = {};
+    for (const b of myBets) m[b.question_id] = b;
+    return m;
+  }, [myBets]);
+
+  const nameReady = trimmed.length > 0;
+
+  // ---- mutations ----------------------------------------------------------
+  const confirmBet = async (questionId, pick, wager, oddsAtBet) => {
+    const { error } = await supabase.from("bets").insert({
+      guest_name: name.trim(),
+      question_id: questionId,
+      pick,
+      wager,
+      odds_at_bet: oddsAtBet,
+    });
+    if (error) {
+      notify(
+        error.code === "23505"
+          ? "You've already placed a bet on this one!"
+          : "Couldn't save your bet. Check your connection and try again.",
+        { tone: "error" }
+      );
+      return false;
+    }
+    await load();
+    return true;
   };
 
-  const siteUrl = "https://your-wedding-bets.com"; // replace when hosted
+  const addQuestion = async (form) => {
+    const { error } = await supabase.from("questions").insert({
+      prompt: form.prompt.trim(),
+      option_a: form.option_a.trim(),
+      option_b: form.option_b.trim(),
+      odds_a: form.odds_a.trim() || "+100",
+      odds_b: form.odds_b.trim() || "+100",
+      sort: questions.length,
+    });
+    if (error) {
+      notify("Couldn't add the question.", { tone: "error" });
+      return false;
+    }
+    await load();
+    return true;
+  };
+
+  const setWinner = async (questionId, opt) => {
+    const { error } = await supabase
+      .from("questions")
+      .update({ winner: opt })
+      .eq("id", questionId);
+    if (error) notify("Couldn't set the winner.", { tone: "error" });
+    else await load();
+  };
+
+  const updateQuestion = async (questionId, fields) => {
+    const { error } = await supabase
+      .from("questions")
+      .update({
+        prompt: fields.prompt.trim(),
+        option_a: fields.option_a.trim(),
+        option_b: fields.option_b.trim(),
+        odds_a: fields.odds_a.trim() || "+100",
+        odds_b: fields.odds_b.trim() || "+100",
+      })
+      .eq("id", questionId);
+    if (error) {
+      notify("Couldn't save the question.", { tone: "error" });
+      return false;
+    }
+    await load();
+    return true;
+  };
+
+  const deleteQuestion = async (questionId) => {
+    const { error } = await supabase
+      .from("questions")
+      .delete()
+      .eq("id", questionId);
+    if (error) {
+      notify("Couldn't delete the question.", { tone: "error" });
+      return false;
+    }
+    await load();
+    return true;
+  };
+
+  const tryAdmin = () => {
+    if (adminInput === ADMIN_KEY) {
+      setAdminView(true);
+      setAdminInput("");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      notify("That code isn't right.", { tone: "error" });
+    }
+  };
+
+  // ---- not configured -----------------------------------------------------
+  if (!isConfigured) {
+    return (
+      <Shell>
+        <Header />
+        <section className="card p-6 text-center animate-slide-up">
+          <h2 className="font-serif text-2xl text-mauve-deep">Almost there!</h2>
+          <p className="mt-2 text-sm text-mauve/90 leading-relaxed">
+            Connect a free Supabase database to go live. Add
+            <code className="mx-1 rounded bg-cream-deep px-1">VITE_SUPABASE_URL</code>
+            and
+            <code className="mx-1 rounded bg-cream-deep px-1">
+              VITE_SUPABASE_ANON_KEY
+            </code>
+            to your <code className="rounded bg-cream-deep px-1">.env</code> file.
+            See the README for the 3-minute setup.
+          </p>
+        </section>
+        <Footer />
+      </Shell>
+    );
+  }
+
+  // ---- admin --------------------------------------------------------------
+  if (adminView) {
+    return (
+      <Shell>
+        <AdminPanel
+          questions={questions}
+          leaderboard={standings}
+          onAddQuestion={addQuestion}
+          onSetWinner={setWinner}
+          onUpdateQuestion={updateQuestion}
+          onDeleteQuestion={deleteQuestion}
+          onExit={() => setAdminView(false)}
+          siteUrl={SITE_URL}
+        />
+        <Footer />
+      </Shell>
+    );
+  }
+
+  // ---- guest --------------------------------------------------------------
+  const openCount = questions.filter((q) => !q.winner && !myBetByQ[q.id]).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-amber-50 to-orange-50 p-4 max-w-md mx-auto">
-      {/* Branding */}
-      <div className="text-center animate-fade-in ">
-        <div className="mb-4 transform hover:scale-105 transition-transform duration-300">
-          <img 
-            src="/logo-w-names.png" 
-            alt="Wedding Logo" 
-            className="mx-auto w-28 h-28 rounded-full shadow-lg border-4 border-white object-cover" 
-          />
-        </div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-600 to-amber-600 bg-clip-text text-transparent mb-2">
-          Nikesh & Richa's Wedding Bets
-        </h1>
-        <p className="text-rose-700 text-sm font-medium mt-1">
-          {formatCurrency(STARTING_BANKROLL)} bankroll • bragging rights only
-        </p>
-      </div>
+    <Shell>
+      <Header />
 
-      {/* Admin Access */}
-      {!adminView && (
-        <div className="mb-6 animate-slide-up">
-          <input
-            className="w-full border-2 border-rose-200 rounded-2xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white/80 backdrop-blur-sm shadow-sm"
-            placeholder="🔐 Admin access code"
-            value={adminInput}
-            onChange={(e) => setAdminInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && adminInput === ADMIN_KEY) {
-                setAdminView(true);
-                setAdminInput("");
-              }
-            }}
-          />
-        </div>
-      )}
+      <BalanceCard
+        name={name}
+        onChangeName={onChangeName}
+        balance={myBalance}
+        nameLocked={myBets.length > 0}
+        pendingCount={pendingCount}
+      />
 
-      {/* Guest View */}
-      {!adminView && (
-        <>
-          <div className="mb-6 animate-slide-up">
-            <input
-              className="w-full border-2 border-rose-200 rounded-2xl p-4 text-base focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white/90 backdrop-blur-sm shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-              placeholder="✨ Enter your name"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-              disabled={locked}
-            />
-          </div>
-
-          <div className="space-y-5 mb-6">
-            {bets.map((bet, i) => (
-              <div 
-                key={i} 
-                className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-lg border border-rose-100 p-5 space-y-4 animate-slide-up"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                <div className="font-semibold text-base text-gray-800 mb-1">
-                  {bet.question}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {["A", "B"].map((opt) => {
-                    const isSelected = picks[i] === opt;
-                    const optionText = opt === "A" ? bet.optionA : bet.optionB;
-                    const odds = opt === "A" ? bet.oddsA : bet.oddsB;
-                    const isPositive = odds.startsWith('+');
-                    
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => togglePick(i, opt)}
-                        disabled={locked}
-                        className={`
-                          relative border-2 rounded-2xl p-4 text-sm font-medium
-                          transform transition-all duration-200 active:scale-95
-                          disabled:opacity-50 disabled:cursor-not-allowed
-                          ${isSelected 
-                            ? "bg-gradient-to-br from-rose-500 to-rose-600 text-white border-rose-500 shadow-lg shadow-rose-200 scale-105" 
-                            : "bg-gradient-to-br from-white to-rose-50 text-gray-700 border-rose-200 hover:border-rose-300 hover:shadow-md"
-                          }
-                        `}
-                      >
-                        <div className="font-semibold mb-2">{optionText}</div>
-                        <div className={`
-                          text-xs font-bold px-2 py-1 rounded-lg inline-block
-                          ${isSelected 
-                            ? "bg-white/20 text-white" 
-                            : isPositive 
-                              ? "bg-green-100 text-green-700" 
-                              : "bg-red-100 text-red-700"
-                          }
-                        `}>
-                          {odds}
-                        </div>
-                        {isSelected && (
-                          <div className="absolute top-2 right-2 text-lg">✓</div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Bankroll Controls */}
-          <div className="mb-6 bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-rose-100 p-5 space-y-4">
-            <div className="text-center">
-              <div className="text-xs text-gray-500 mb-1">Remaining Bankroll</div>
-              <div className={`text-3xl font-bold ${remaining < 0 ? 'text-red-500' : remaining < 20 ? 'text-amber-500' : 'text-green-600'}`}>
-                {formatCurrency(remaining)}
-              </div>
-              <div className="mt-2 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div 
-                  className={`h-full transition-all duration-500 ${
-                    remaining < 0 ? 'bg-red-500' : 
-                    remaining < 20 ? 'bg-amber-500' : 
-                    remaining < 50 ? 'bg-yellow-500' : 'bg-green-500'
-                  }`}
-                  style={{ width: `${Math.max(0, Math.min(100, (remaining / STARTING_BANKROLL) * 100))}%` }}
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Bet per pick:</span>
-                <input
-                  type="number"
-                  min="1"
-                  max={STARTING_BANKROLL}
-                  value={stake}
-                  onChange={(e) => setStake(Number(e.target.value))}
-                  className="w-24 border-2 border-rose-200 rounded-xl p-2 text-center font-semibold focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent"
-                  disabled={locked}
-                />
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {[5, 10, 25].map((amt) => (
-                  <button 
-                    key={amt} 
-                    type="button" 
-                    onClick={() => setStake(amt)} 
-                    disabled={locked}
-                    className={`
-                      px-4 py-2 rounded-xl border-2 font-semibold text-sm
-                      transform transition-all duration-200 active:scale-95
-                      disabled:opacity-50 disabled:cursor-not-allowed
-                      ${stake === amt
-                        ? "bg-rose-500 text-white border-rose-500 shadow-md"
-                        : "bg-white text-gray-700 border-rose-200 hover:border-rose-300 hover:bg-rose-50"
-                      }
-                    `}
-                  >
-                    ${amt}
-                  </button>
-                ))}
-                <button 
-                  type="button" 
-                  onClick={() => setStake(remaining > 0 ? remaining : stake)} 
-                  disabled={locked}
-                  className={`
-                    px-4 py-2 rounded-xl border-2 font-semibold text-sm
-                    transform transition-all duration-200 active:scale-95
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                    ${stake === remaining && remaining > 0
-                      ? "bg-amber-500 text-white border-amber-500 shadow-md"
-                      : "bg-white text-gray-700 border-amber-200 hover:border-amber-300 hover:bg-amber-50"
-                    }
-                  `}
-                >
-                  All-in
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <button 
-            onClick={submitBet} 
-            disabled={locked || remaining < 0 || Object.keys(picks).length === 0}
-            className={`
-              w-full py-4 rounded-2xl font-bold text-lg shadow-lg
-              transform transition-all duration-200 active:scale-95
-              disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-              ${locked 
-                ? "bg-gradient-to-r from-gray-400 to-gray-500 text-white" 
-                : "bg-gradient-to-r from-rose-500 to-rose-600 text-white hover:from-rose-600 hover:to-rose-700 hover:shadow-xl"
-              }
-            `}
-          >
-            {locked ? "✓ Picks Locked In" : "🎲 Lock In Your Picks"}
-          </button>
-          
-          {locked && (
-            <div className="mt-4 p-4 bg-green-50 border-2 border-green-200 rounded-2xl text-center animate-bounce-in">
-              <p className="text-green-700 font-semibold">🎉 Your picks are locked!</p>
-              <p className="text-green-600 text-sm mt-1">Good luck!</p>
-            </div>
+      {/* Questions */}
+      {loading ? (
+        <p className="py-8 text-center text-mauve/70">Shuffling the deck…</p>
+      ) : questions.length === 0 ? (
+        <section className="card p-6 text-center">
+          <p className="font-serif text-xl text-mauve-deep">No bets are open yet</p>
+          <p className="mt-1 text-sm text-mauve/80">
+            Check back soon — the couple is cooking up some questions.
+          </p>
+        </section>
+      ) : (
+        <div className="space-y-4">
+          {nameReady && openCount > 0 && (
+            <p className="eyebrow text-center text-mauve">
+              {openCount} bet{openCount === 1 ? "" : "s"} open
+            </p>
           )}
-        </>
-      )}
-
-      {/* Admin Panel */}
-      {adminView && (
-        <div className="mt-4 space-y-6 animate-fade-in">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-rose-600 to-amber-600 bg-clip-text text-transparent mb-2">
-              Admin Control Panel
-            </h2>
-            <button
-              onClick={() => setAdminView(false)}
-              className="text-sm text-gray-500 hover:text-gray-700 underline"
-            >
-              Exit Admin Mode
-            </button>
-          </div>
-
-          {/* Add Question */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-lg border border-rose-100 p-5 space-y-4">
-            <h3 className="font-bold text-lg text-gray-800">➕ Add New Question</h3>
-            <input 
-              className="w-full border-2 border-rose-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white" 
-              placeholder="Enter your question..." 
-              value={newBet.question} 
-              onChange={(e) => setNewBet({ ...newBet, question: e.target.value })} 
+          {questions.map((q, i) => (
+            <BetCard
+              key={q.id}
+              question={q}
+              myBet={myBetByQ[q.id] || null}
+              balance={myBalance}
+              nameReady={nameReady}
+              onConfirm={confirmBet}
+              index={i}
             />
-            <div className="grid grid-cols-2 gap-3">
-              <input 
-                className="border-2 border-rose-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white" 
-                placeholder="Option A" 
-                value={newBet.optionA} 
-                onChange={(e) => setNewBet({ ...newBet, optionA: e.target.value })} 
-              />
-              <input 
-                className="border-2 border-rose-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white" 
-                placeholder="Odds A (+150)" 
-                value={newBet.oddsA} 
-                onChange={(e) => setNewBet({ ...newBet, oddsA: e.target.value })} 
-              />
-              <input 
-                className="border-2 border-rose-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white" 
-                placeholder="Option B" 
-                value={newBet.optionB} 
-                onChange={(e) => setNewBet({ ...newBet, optionB: e.target.value })} 
-              />
-              <input 
-                className="border-2 border-rose-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-transparent bg-white" 
-                placeholder="Odds B (+250)" 
-                value={newBet.oddsB} 
-                onChange={(e) => setNewBet({ ...newBet, oddsB: e.target.value })} 
-              />
-            </div>
-            <button 
-              type="button" 
-              onClick={addQuestion} 
-              className="w-full bg-gradient-to-r from-rose-500 to-rose-600 text-white py-3 rounded-xl font-semibold shadow-md hover:from-rose-600 hover:to-rose-700 transform transition-all duration-200 active:scale-95"
-            >
-              Add Question
-            </button>
-          </div>
-
-          {/* Set Winners */}
-          {bets.map((bet, i) => (
-            <div key={i} className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-lg border border-rose-100 p-5 space-y-3">
-              <div className="font-semibold text-base text-gray-800 mb-3">{bet.question}</div>
-              <div className="flex gap-3">
-                <button 
-                  type="button" 
-                  onClick={() => setWinner(i, "A")} 
-                  className={`
-                    flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 rounded-xl font-semibold
-                    shadow-md hover:from-green-600 hover:to-green-700 transform transition-all duration-200 active:scale-95
-                    ${bet.winner === "A" ? "ring-4 ring-green-300" : ""}
-                  `}
-                >
-                  {bet.optionA} 🏆
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => setWinner(i, "B")} 
-                  className={`
-                    flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 rounded-xl font-semibold
-                    shadow-md hover:from-green-600 hover:to-green-700 transform transition-all duration-200 active:scale-95
-                    ${bet.winner === "B" ? "ring-4 ring-green-300" : ""}
-                  `}
-                >
-                  {bet.optionB} 🏆
-                </button>
-              </div>
-              {bet.winner && (
-                <div className="text-center text-sm text-green-600 font-medium mt-2">
-                  ✓ Winner set: {bet.winner === "A" ? bet.optionA : bet.optionB}
-                </div>
-              )}
-            </div>
           ))}
-
-          {/* Leaderboard */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-lg border border-rose-100 p-5">
-            <h3 className="font-bold text-lg text-gray-800 mb-4">🏆 Leaderboard</h3>
-            {submissions.length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-4">No submissions yet</p>
-            ) : (
-              <div className="space-y-2">
-                {submissions.sort((a, b) => b.bankroll - a.bankroll).map((s, i) => (
-                  <div 
-                    key={i} 
-                    className={`
-                      flex justify-between items-center p-3 rounded-xl
-                      ${i === 0 ? "bg-gradient-to-r from-amber-100 to-yellow-100 border-2 border-amber-300" : "bg-gray-50"}
-                      transform transition-all duration-200
-                    `}
-                  >
-                    <div className="flex items-center gap-2">
-                      {i === 0 && <span className="text-2xl">👑</span>}
-                      <span className={`font-semibold ${i === 0 ? "text-amber-700" : "text-gray-700"}`}>
-                        {i + 1}. {s.name}
-                      </span>
-                    </div>
-                    <span className={`font-bold ${i === 0 ? "text-amber-700 text-lg" : "text-gray-700"}`}>
-                      {formatCurrency(s.bankroll)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* QR */}
-          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-lg border border-rose-100 p-5 text-center">
-            <h3 className="font-bold text-lg text-gray-800 mb-4">📱 QR Code for Guests</h3>
-            <div className="bg-white p-4 rounded-2xl inline-block shadow-inner">
-              <img 
-                className="mx-auto rounded-lg" 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${siteUrl}`} 
-                alt="QR Code" 
-              />
-            </div>
-            <p className="text-sm text-gray-600 mt-4 font-mono bg-gray-50 p-2 rounded-lg">{siteUrl}</p>
-          </div>
         </div>
       )}
+
+      <Leaderboard
+        entries={leaderboard}
+        currentName={name}
+        totalQuestions={questions.length}
+        myBetCount={nameReady ? myBets.length : null}
+      />
+
+      <Footer
+        adminInput={adminInput}
+        setAdminInput={setAdminInput}
+        tryAdmin={tryAdmin}
+      />
+    </Shell>
+  );
+}
+
+// Phone-width column on the cream field, with floral corners behind it.
+function Shell({ children }) {
+  return (
+    <div className="relative min-h-[100dvh]">
+      <FloralCorners />
+      <main className="relative z-10 mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-4 pb-10">
+        {children}
+      </main>
     </div>
   );
 }
 
+function Footer({ adminInput, setAdminInput, tryAdmin }) {
+  const showAdmin = setAdminInput && tryAdmin;
+  return (
+    <footer className="mt-auto pt-6 text-center">
+      <div className="scallop-divider mb-4">
+        <span className="text-blush text-xs">✦</span>
+      </div>
+      <p className="font-serif text-xl tracking-wide text-mauve-deep">
+        #NIKUGOTRICH
+      </p>
+      <p className="mt-1 text-xs text-mauve/70">
+        fake money · real bragging rights
+      </p>
+
+      {/* Admin code field, tucked at the very bottom for the couple. */}
+      {showAdmin && (
+        <div className="mx-auto mt-5 max-w-xs">
+          <label className="eyebrow text-mauve/60">Admin Console</label>
+          <div className="mt-1.5 flex gap-2">
+            <input
+              type="password"
+              className="flex-1 rounded-xl border border-mauve/25 bg-cream/60 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blush/40"
+              placeholder="Enter Code"
+              value={adminInput}
+              onChange={(e) => setAdminInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && tryAdmin()}
+            />
+            <button
+              onClick={tryAdmin}
+              className="rounded-xl bg-mauve px-3 py-2 text-sm font-semibold text-cream-card"
+            >
+              Enter
+            </button>
+          </div>
+        </div>
+      )}
+    </footer>
+  );
+}
