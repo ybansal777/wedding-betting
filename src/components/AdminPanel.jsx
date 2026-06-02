@@ -274,13 +274,11 @@ export default function AdminPanel({
         <h3 className="font-serif text-xl text-mauve-deep">Share with guests</h3>
         <div className="mt-3 inline-block rounded-2xl bg-cream-card p-3 shadow-inner">
           <img
-            className="rounded-lg"
+            className="h-[200px] w-[200px] rounded-lg object-contain"
             width="200"
             height="200"
             alt="QR code linking to the betting app"
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=${encodeURIComponent(
-              siteUrl
-            )}`}
+            src="/qr-code.png"
           />
         </div>
         <p className="mt-3 break-all rounded-lg bg-cream-deep/60 px-2 py-1.5 font-mono text-xs text-mauve">
