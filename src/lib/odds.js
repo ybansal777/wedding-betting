@@ -31,7 +31,7 @@ export const formatMoney = (amount) =>
 // Unsettled bets only subtract the wager; settled bets add the return on a win.
 export const balanceFor = (bets) =>
   bets.reduce((bal, b) => {
-    const settled = b.winner === "A" || b.winner === "B";
+    const settled = b.winner != null && b.winner !== "";
     if (!settled) return bal - b.wager;
     return b.winner === b.pick
       ? bal - b.wager + returnOnWin(b.wager, b.odds_at_bet)

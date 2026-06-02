@@ -1,20 +1,23 @@
 -- Wedding Betting App — Supabase schema
 -- Run this once in your Supabase project's SQL Editor (Dashboard → SQL → New query).
--- Safe to re-run: it uses IF NOT EXISTS / idempotent policy drops.
+--
+-- ⚠️ If you ran an EARLIER version of this schema (with option_a/option_b columns),
+-- drop the old tables first so they can be recreated in the new shape:
+--     drop table if exists public.bets, public.questions cascade;
 
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
 
+-- Each question carries a variable list of options as JSON:
+--   [{ "id": "<stable id>", "label": "Nikesh", "odds": "+150" }, ...]
+-- `winner` holds the id of the winning option (null until the admin settles it).
 create table if not exists public.questions (
   id         uuid primary key default gen_random_uuid(),
-  prompt     text not null,
-  option_a   text not null,
-  option_b   text not null,
-  odds_a     text not null default '+100',
-  odds_b     text not null default '+100',
-  winner     text check (winner in ('A', 'B')),   -- null until the admin settles it
-  sort       int  not null default 0,
+  prompt     text  not null,
+  options    jsonb not null default '[]'::jsonb,
+  winner     text,                                  -- option id, or null
+  sort       int   not null default 0,
   created_at timestamptz not null default now()
 );
 
@@ -22,9 +25,10 @@ create table if not exists public.bets (
   id          uuid primary key default gen_random_uuid(),
   guest_name  text not null,
   question_id uuid not null references public.questions (id) on delete cascade,
-  pick        text not null check (pick in ('A', 'B')),
+  pick        text not null,                         -- chosen option id
+  pick_label  text,                                  -- label snapshot at bet time
   wager       int  not null check (wager > 0),
-  odds_at_bet text not null,                       -- odds snapshot when the bet was confirmed
+  odds_at_bet text not null,                         -- odds snapshot at bet time
   created_at  timestamptz not null default now()
 );
 
@@ -68,6 +72,10 @@ alter publication supabase_realtime add table public.bets;
 -- Optional starter question (delete or edit from the admin panel).
 -- ---------------------------------------------------------------------------
 
-insert into public.questions (prompt, option_a, option_b, odds_a, odds_b, sort)
-select 'Who will cry first?', 'Nikesh', 'Richa', '+150', '+250', 0
+insert into public.questions (prompt, options, sort)
+select
+  'Who will cry first?',
+  '[{"id":"opt-nikesh","label":"Nikesh","odds":"+150"},
+    {"id":"opt-richa","label":"Richa","odds":"+250"}]'::jsonb,
+  0
 where not exists (select 1 from public.questions);

@@ -14,6 +14,20 @@ const SITE_URL =
   import.meta.env.VITE_SITE_URL ||
   (typeof window !== "undefined" ? window.location.origin : "");
 
+const optionId = () =>
+  globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+
+// Normalize an option draft list before saving: trim, default odds, keep ids
+// stable, and drop options with no label.
+const cleanOptions = (opts = []) =>
+  opts
+    .map((o) => ({
+      id: o.id || optionId(),
+      label: (o.label || "").trim(),
+      odds: (o.odds || "").trim() || "+100",
+    }))
+    .filter((o) => o.label);
+
 export default function App() {
   const notify = useToast();
 
@@ -102,11 +116,12 @@ export default function App() {
   const nameReady = trimmed.length > 0;
 
   // ---- mutations ----------------------------------------------------------
-  const confirmBet = async (questionId, pick, wager, oddsAtBet) => {
+  const confirmBet = async (questionId, pick, wager, oddsAtBet, pickLabel) => {
     const { error } = await supabase.from("bets").insert({
       guest_name: name.trim(),
       question_id: questionId,
       pick,
+      pick_label: pickLabel,
       wager,
       odds_at_bet: oddsAtBet,
     });
@@ -114,7 +129,7 @@ export default function App() {
       notify(
         error.code === "23505"
           ? "You've already placed a bet on this one!"
-          : "Couldn't save your bet. Check your connection and try again.",
+          : `Couldn't save your bet: ${error.message}`,
         { tone: "error" }
       );
       return false;
@@ -124,16 +139,18 @@ export default function App() {
   };
 
   const addQuestion = async (form) => {
+    const options = cleanOptions(form.options);
+    if (!form.prompt.trim() || options.length < 2) {
+      notify("Add a question and at least two options.", { tone: "error" });
+      return false;
+    }
     const { error } = await supabase.from("questions").insert({
       prompt: form.prompt.trim(),
-      option_a: form.option_a.trim(),
-      option_b: form.option_b.trim(),
-      odds_a: form.odds_a.trim() || "+100",
-      odds_b: form.odds_b.trim() || "+100",
+      options,
       sort: questions.length,
     });
     if (error) {
-      notify("Couldn't add the question.", { tone: "error" });
+      notify(`Couldn't add the question: ${error.message}`, { tone: "error" });
       return false;
     }
     await load();
@@ -145,23 +162,23 @@ export default function App() {
       .from("questions")
       .update({ winner: opt })
       .eq("id", questionId);
-    if (error) notify("Couldn't set the winner.", { tone: "error" });
+    if (error)
+      notify(`Couldn't set the winner: ${error.message}`, { tone: "error" });
     else await load();
   };
 
   const updateQuestion = async (questionId, fields) => {
+    const options = cleanOptions(fields.options);
+    if (!fields.prompt.trim() || options.length < 2) {
+      notify("Add a question and at least two options.", { tone: "error" });
+      return false;
+    }
     const { error } = await supabase
       .from("questions")
-      .update({
-        prompt: fields.prompt.trim(),
-        option_a: fields.option_a.trim(),
-        option_b: fields.option_b.trim(),
-        odds_a: fields.odds_a.trim() || "+100",
-        odds_b: fields.odds_b.trim() || "+100",
-      })
+      .update({ prompt: fields.prompt.trim(), options })
       .eq("id", questionId);
     if (error) {
-      notify("Couldn't save the question.", { tone: "error" });
+      notify(`Couldn't save the question: ${error.message}`, { tone: "error" });
       return false;
     }
     await load();
@@ -174,7 +191,7 @@ export default function App() {
       .delete()
       .eq("id", questionId);
     if (error) {
-      notify("Couldn't delete the question.", { tone: "error" });
+      notify(`Couldn't delete the question: ${error.message}`, { tone: "error" });
       return false;
     }
     await load();
