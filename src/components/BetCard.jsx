@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   americanToMultiplier,
   profitOnWin,
@@ -9,22 +8,21 @@ import {
 const QUICK = [5, 10, 25];
 
 // One question with a variable list of options. Three lives:
-//  1. open   — guest selects an option, sets a wager, reviews, and confirms (final).
-//  2. locked — guest already has a confirmed bet on this question.
+//  1. open   — guest picks an option and sets a wager; it's STAGED into the bet
+//              slip (no confirm here). Balance updates live in the parent.
+//  2. locked — guest already placed a confirmed bet on this question.
 //  3. settled — admin set a winner; show win/loss (and result if guest sat out).
 export default function BetCard({
   question: q,
   myBet,
-  balance,
+  staged, // { optionId, wager, odds, label } | null
+  maxWager, // most this question may stake right now
   nameReady,
-  onConfirm,
+  onStage, // (questionId, optionId, odds, label)
+  onWager, // (questionId, wager)
+  onClear, // (questionId)
   index = 0,
 }) {
-  const [pick, setPick] = useState(null); // selected option id
-  const [wager, setWager] = useState(Math.min(10, Math.max(1, balance)));
-  const [confirming, setConfirming] = useState(false);
-  const [saving, setSaving] = useState(false);
-
   const options = Array.isArray(q.options) ? q.options : [];
   const settled = q.winner != null && q.winner !== "";
   const optById = (id) => options.find((o) => o.id === id) || null;
@@ -111,13 +109,12 @@ export default function BetCard({
     );
   }
 
-  // -------------------------------------------------- OPEN (place a bet)
-  const cappedWager = Math.min(wager, balance);
-  const canBet = nameReady && balance > 0;
-  const picked = optById(pick);
-
-  const setWagerSafe = (v) =>
-    setWager(Math.max(1, Math.min(Math.floor(v) || 1, balance)));
+  // -------------------------------------------------- OPEN (stage a bet)
+  const picked = staged ? optById(staged.optionId) : null;
+  const wager = staged?.wager || 0;
+  // A fresh (unstaged) option can only be chosen if there's money left.
+  const outOfMoney = !staged && maxWager < 1;
+  const sliderMax = Math.max(1, maxWager);
 
   return (
     <article
@@ -130,17 +127,19 @@ export default function BetCard({
 
       <div className="grid grid-cols-2 gap-3">
         {options.map((o) => {
-          const selected = pick === o.id;
+          const selected = staged?.optionId === o.id;
           const mult = americanToMultiplier(o.odds);
+          const disabled = !nameReady || (!selected && outOfMoney);
           return (
             <button
               key={o.id}
               type="button"
-              disabled={!canBet}
-              onClick={() => {
-                setPick(selected ? null : o.id);
-                setConfirming(false);
-              }}
+              disabled={disabled}
+              onClick={() =>
+                selected
+                  ? onClear(q.id)
+                  : onStage(q.id, o.id, o.odds, o.label)
+              }
               className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 active:scale-[0.97] disabled:opacity-50 ${
                 selected
                   ? "border-blush bg-blush/10 shadow-soft"
@@ -166,41 +165,44 @@ export default function BetCard({
         })}
       </div>
 
-      {!canBet && (
+      {!nameReady && (
         <p className="mt-3 text-center text-sm text-mauve/70">
-          {!nameReady
-            ? "Enter your name above to start betting."
-            : "You're out of money — ride out your open bets!"}
+          Enter your name above to start betting.
+        </p>
+      )}
+      {nameReady && outOfMoney && (
+        <p className="mt-3 text-center text-sm text-mauve/70">
+          You're out of money — adjust your other bets to free some up.
         </p>
       )}
 
-      {/* wager + review */}
-      {picked && canBet && !confirming && (
+      {/* wager controls (staged) */}
+      {picked && (
         <div className="mt-4 animate-fade-in">
           <div className="flex items-center justify-between">
             <span className="eyebrow text-mauve">Wager</span>
             <span className="font-serif text-2xl text-mauve-deep">
-              {formatMoney(cappedWager)}
+              {formatMoney(wager)}
             </span>
           </div>
 
           <input
             type="range"
             min="1"
-            max={Math.max(1, balance)}
-            value={cappedWager}
-            onChange={(e) => setWagerSafe(Number(e.target.value))}
+            max={sliderMax}
+            value={Math.min(wager, sliderMax)}
+            onChange={(e) => onWager(q.id, Number(e.target.value))}
             className="mt-2 w-full accent-blush"
           />
 
           <div className="mt-2 flex flex-wrap gap-2">
-            {QUICK.filter((a) => a <= balance).map((a) => (
+            {QUICK.filter((a) => a <= maxWager).map((a) => (
               <button
                 key={a}
                 type="button"
-                onClick={() => setWagerSafe(a)}
+                onClick={() => onWager(q.id, a)}
                 className={`rounded-xl border px-3 py-1.5 text-sm font-semibold transition ${
-                  cappedWager === a
+                  wager === a
                     ? "border-blush bg-blush text-cream-card"
                     : "border-blush/30 text-mauve hover:bg-blush/10"
                 }`}
@@ -210,79 +212,38 @@ export default function BetCard({
             ))}
             <button
               type="button"
-              onClick={() => setWagerSafe(balance)}
+              onClick={() => onWager(q.id, maxWager)}
               className={`rounded-xl border px-3 py-1.5 text-sm font-semibold transition ${
-                cappedWager === balance
+                wager === maxWager
                   ? "border-sage bg-sage text-cream-card"
                   : "border-sage/40 text-sage-deep hover:bg-sage/10"
               }`}
             >
-              All in ({formatMoney(balance)})
+              Max ({formatMoney(maxWager)})
+            </button>
+            <button
+              type="button"
+              onClick={() => onClear(q.id)}
+              className="ml-auto rounded-xl border border-mauve/25 px-3 py-1.5 text-sm font-semibold text-mauve transition hover:bg-cream-deep/60"
+            >
+              Remove
             </button>
           </div>
 
           <p className="mt-3 rounded-2xl bg-cream-deep/60 px-4 py-3 text-sm text-mauve-deep">
-            Bet <b>{formatMoney(cappedWager)}</b> on{" "}
+            Bet <b>{formatMoney(wager)}</b> on{" "}
             <b className="text-blush-deep">{picked.label}</b> → win{" "}
             <b className="text-sage-deep">
-              {formatMoney(returnOnWin(cappedWager, picked.odds))}
+              {formatMoney(returnOnWin(wager, picked.odds))}
             </b>{" "}
             <span className="text-mauve/70">
-              (profit +{formatMoney(profitOnWin(cappedWager, picked.odds))})
+              (profit +{formatMoney(profitOnWin(wager, picked.odds))})
             </span>
           </p>
 
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="btn-primary mt-3 w-full py-3.5 text-base"
-          >
-            Review bet
-          </button>
-        </div>
-      )}
-
-      {/* confirmation — final */}
-      {picked && canBet && confirming && (
-        <div className="mt-4 rounded-2xl border-2 border-blush/40 bg-blush/5 p-4 animate-pop-in">
-          <p className="text-center font-serif text-xl text-mauve-deep">
-            Lock in {formatMoney(cappedWager)} on{" "}
-            <span className="text-blush-deep">{picked.label}</span>?
+          <p className="mt-2 text-center text-xs text-mauve/70">
+            Added to your bet slip — review &amp; place it below.
           </p>
-          <p className="mt-1 text-center text-sm text-mauve/80">
-            Confirmed bets are <b>final</b> — you can't change them.
-          </p>
-          <div className="mt-4 flex gap-3">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => setConfirming(false)}
-              className="flex-1 rounded-2xl border-2 border-mauve/25 py-3 font-semibold text-mauve transition hover:bg-cream-deep/60 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={async () => {
-                setSaving(true);
-                const ok = await onConfirm(
-                  q.id,
-                  picked.id,
-                  cappedWager,
-                  picked.odds,
-                  picked.label
-                );
-                if (!ok) {
-                  setSaving(false);
-                  setConfirming(false);
-                }
-              }}
-              className="btn-primary flex-1 py-3 text-base"
-            >
-              {saving ? "Locking…" : "Lock it in"}
-            </button>
-          </div>
         </div>
       )}
     </article>

@@ -6,6 +6,7 @@ import Header from "./components/Header";
 import BalanceCard from "./components/BalanceCard";
 import BetCard from "./components/BetCard";
 import Leaderboard from "./components/Leaderboard";
+import BetSlip from "./components/BetSlip";
 import AdminPanel from "./components/AdminPanel";
 import { useToast } from "./components/Toast";
 
@@ -38,6 +39,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [adminView, setAdminView] = useState(false);
   const [adminInput, setAdminInput] = useState("");
+  // Staged (not-yet-placed) bets, keyed by question id:
+  // { [questionId]: { optionId, wager, odds, label } }
+  const [staged, setStaged] = useState({});
 
   // ---- data loading + realtime -------------------------------------------
   const load = useCallback(async () => {
@@ -70,7 +74,10 @@ export default function App() {
     };
   }, [load]);
 
-  const onChangeName = (v) => setName(v);
+  const onChangeName = (v) => {
+    setName(v);
+    setStaged({}); // switching identity clears the in-progress slip
+  };
 
   // ---- derived state ------------------------------------------------------
   const winnerById = useMemo(() => {
@@ -89,22 +96,15 @@ export default function App() {
     () => bets.filter((b) => b.guest_name.trim().toLowerCase() === trimmed),
     [bets, trimmed]
   );
-  const myBalance = useMemo(
+  // Balance from CONFIRMED bets (what's actually in the DB).
+  const confirmedBalance = useMemo(
     () => balanceFor(myBets.map(enrich)),
     [myBets, enrich]
   );
-  // Full standings (every player with at least one bet) — used by the admin.
-  const standings = useMemo(
+  // Leaderboard / admin standings: everyone with at least one confirmed bet.
+  const leaderboard = useMemo(
     () => buildLeaderboard(bets.map(enrich)),
     [bets, enrich]
-  );
-  // Public leaderboard: only players who have bet on EVERY question.
-  const leaderboard = useMemo(
-    () =>
-      questions.length === 0
-        ? []
-        : standings.filter((e) => e.bets.length >= questions.length),
-    [standings, questions.length]
   );
   const pendingCount = myBets.filter((b) => !winnerById[b.question_id]).length;
   const myBetByQ = useMemo(() => {
@@ -113,28 +113,85 @@ export default function App() {
     return m;
   }, [myBets]);
 
+  // Staged-bet math. Available balance falls live as the slip grows.
+  const stagedTotal = useMemo(
+    () => Object.values(staged).reduce((s, v) => s + (v.wager || 0), 0),
+    [staged]
+  );
+  const availableBalance = confirmedBalance - stagedTotal;
+  // The most a given question may stake = balance minus everything staged
+  // elsewhere (so it can reclaim its own staked amount when adjusting).
+  const maxWagerFor = (qid) =>
+    Math.max(0, confirmedBalance - (stagedTotal - (staged[qid]?.wager || 0)));
+
+  const slipItems = useMemo(
+    () =>
+      Object.entries(staged).map(([questionId, s]) => ({
+        questionId,
+        prompt: questions.find((q) => q.id === questionId)?.prompt || "",
+        label: s.label,
+        odds: s.odds,
+        wager: s.wager,
+      })),
+    [staged, questions]
+  );
+
   const nameReady = trimmed.length > 0;
 
+  // ---- staging (local, not yet persisted) --------------------------------
+  const clampWager = (qid, w) =>
+    Math.max(1, Math.min(Math.floor(w) || 1, maxWagerFor(qid)));
+
+  const stageBet = (questionId, optionId, odds, label) => {
+    setStaged((prev) => {
+      const existing = prev[questionId];
+      // Keep the prior wager when just switching option; otherwise default to 10.
+      const desired = existing?.wager ?? Math.min(10, maxWagerFor(questionId));
+      const wager = clampWager(questionId, desired);
+      return { ...prev, [questionId]: { optionId, odds, label, wager } };
+    });
+  };
+
+  const setStageWager = (questionId, w) =>
+    setStaged((prev) =>
+      prev[questionId]
+        ? { ...prev, [questionId]: { ...prev[questionId], wager: clampWager(questionId, w) } }
+        : prev
+    );
+
+  const unstageBet = (questionId) =>
+    setStaged((prev) => {
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
+    });
+
   // ---- mutations ----------------------------------------------------------
-  const confirmBet = async (questionId, pick, wager, oddsAtBet, pickLabel) => {
-    const { error } = await supabase.from("bets").insert({
+  // Persist every staged bet at once (the "Place Bets" action).
+  const placeBets = async () => {
+    const rows = Object.entries(staged).map(([questionId, s]) => ({
       guest_name: name.trim(),
       question_id: questionId,
-      pick,
-      pick_label: pickLabel,
-      wager,
-      odds_at_bet: oddsAtBet,
-    });
+      pick: s.optionId,
+      pick_label: s.label,
+      wager: s.wager,
+      odds_at_bet: s.odds,
+    }));
+    if (rows.length === 0) return false;
+
+    const { error } = await supabase.from("bets").insert(rows);
     if (error) {
       notify(
         error.code === "23505"
-          ? "You've already placed a bet on this one!"
-          : `Couldn't save your bet: ${error.message}`,
+          ? "Looks like you already bet on one of these — refresh and try again."
+          : `Couldn't place your bets: ${error.message}`,
         { tone: "error" }
       );
       return false;
     }
+    setStaged({});
     await load();
+    notify("Bets placed — good luck!", { tone: "success" });
     return true;
   };
 
@@ -237,7 +294,7 @@ export default function App() {
       <Shell>
         <AdminPanel
           questions={questions}
-          leaderboard={standings}
+          leaderboard={leaderboard}
           onAddQuestion={addQuestion}
           onSetWinner={setWinner}
           onUpdateQuestion={updateQuestion}
@@ -260,7 +317,7 @@ export default function App() {
       <BalanceCard
         name={name}
         onChangeName={onChangeName}
-        balance={myBalance}
+        balance={availableBalance}
         nameLocked={myBets.length > 0}
         pendingCount={pendingCount}
       />
@@ -287,26 +344,31 @@ export default function App() {
               key={q.id}
               question={q}
               myBet={myBetByQ[q.id] || null}
-              balance={myBalance}
+              staged={staged[q.id] || null}
+              maxWager={maxWagerFor(q.id)}
               nameReady={nameReady}
-              onConfirm={confirmBet}
+              onStage={stageBet}
+              onWager={setStageWager}
+              onClear={unstageBet}
               index={i}
             />
           ))}
         </div>
       )}
 
-      <Leaderboard
-        entries={leaderboard}
-        currentName={name}
-        totalQuestions={questions.length}
-        myBetCount={nameReady ? myBets.length : null}
-      />
+      <Leaderboard entries={leaderboard} currentName={name} />
 
       <Footer
         adminInput={adminInput}
         setAdminInput={setAdminInput}
         tryAdmin={tryAdmin}
+      />
+
+      <BetSlip
+        items={slipItems}
+        total={stagedTotal}
+        onRemove={unstageBet}
+        onPlace={placeBets}
       />
     </Shell>
   );
@@ -317,7 +379,7 @@ function Shell({ children }) {
   return (
     <div className="relative min-h-[100dvh]">
       <FloralCorners />
-      <main className="relative z-10 mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-4 pb-10">
+      <main className="relative z-10 mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-4 pb-28">
         {children}
       </main>
     </div>
