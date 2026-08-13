@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# The 73 assertions are the only thing standing between a policy typo and a
+# cross-event data leak. Running them by hand means running them when you
+# remember, which is not a control.
+jobs:
+  database:
+    name: Database assertions
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: wbtest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply schema
+        env:
+          PGPASSWORD: test
+        run: |
+          # 00_bootstrap stubs the parts of Supabase (auth.uid, the anon and
+          # authenticated roles) that the schema depends on. It is test-only.
+          psql -h localhost -U postgres -d wbtest -v ON_ERROR_STOP=1 -q \
+            -f supabase/tests/00_bootstrap.sql
+          psql -h localhost -U postgres -d wbtest -v ON_ERROR_STOP=1 -q \
+            -f supabase/schema.sql
+
+      - name: Run assertions
+        env:
+          PGPASSWORD: test
+        run: |
+          set -uo pipefail
+          failed=0
+          for suite in supabase/tests/[0-9][0-9]_*.test.sql; do
+            echo "▸ $(basename "$suite")"
+            if ! out=$(psql -h localhost -U postgres -d wbtest \
+                  -v ON_ERROR_STOP=1 -q -f "$suite" 2>&1); then
+              failed=1
+            fi
+            echo "$out" | grep -E 'PASS|FAIL|ERROR' \
+              | sed 's/^psql:[^ ]* NOTICE: //' || true
+            if [ "$failed" -eq 1 ]; then break; fi
+          done
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::database assertions failed"
+            exit 1
+          fi
+          echo "✓ all assertions passed"
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Placeholders only. The build must never need real credentials — if it
+      # does, a secret has leaked into build time rather than runtime.
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+        run: npm run build
+
+  secrets:
+    name: No committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for real keys
+        run: |
+          # Live Stripe keys and Supabase service-role JWTs are the two that
+          # would actually hurt. `.env*.local` is gitignored, so anything found
+          # here was committed by mistake.
+          if git grep -nE 'sk_live_|whsec_[A-Za-z0-9]{16,}|service_role.*eyJ' \
+               -- . ':!*.md' ':!.github/**'; then
+            echo "::error::possible secret committed"
+            exit 1
+          fi
+          echo "✓ no obvious secrets"

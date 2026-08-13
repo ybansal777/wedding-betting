@@ -765,12 +765,143 @@ begin
 end;
 $$;
 
+-- Custom link (premium).
+--
+-- Slugs are globally unique and appear on printed table cards, so this
+-- validates shape, checks availability, and refuses reserved words that would
+-- collide with real routes.
+create or replace function public.set_event_slug(p_event_id uuid, p_slug citext)
+  returns citext
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_event public.events;
+  v_tier  public.tiers;
+  v_slug  citext := lower(btrim(p_slug))::citext;
+begin
+  select * into v_event from public.events where id = p_event_id;
+  if not found then raise exception 'event_not_found'; end if;
+  if not public.is_event_owner(p_event_id) then raise exception 'not_authorised'; end if;
+
+  select * into v_tier from public.tiers where key = v_event.tier;
+  if not coalesce(v_tier.branding, false) then
+    raise exception 'tier_lacks_branding';
+  end if;
+
+  if length(v_slug) < 3 or length(v_slug) > 48 then
+    raise exception 'slug_bad_length';
+  end if;
+  if v_slug !~ '^[a-z0-9]+(-[a-z0-9]+)*$' then
+    raise exception 'slug_bad_format';
+  end if;
+  -- These would shadow real paths under /e/ or read as system pages.
+  if v_slug in ('api', 'auth', 'login', 'dashboard', 'account', 'admin',
+                'privacy', 'terms', 'new', 'join', 'recap', 'e') then
+    raise exception 'slug_reserved';
+  end if;
+
+  if exists (select 1 from public.events where slug = v_slug and id <> p_event_id) then
+    raise exception 'slug_taken';
+  end if;
+
+  update public.events set slug = v_slug where id = p_event_id;
+  return v_slug;
+end;
+$$;
+
+revoke all on function public.set_event_slug(uuid, citext) from anon;
+grant execute on function public.set_event_slug(uuid, citext) to authenticated;
+
 -- =============================================================================
 -- ANALYTICS & OPS
 -- =============================================================================
 
+-- Fixed-window rate limiting.
+--
+-- Serverless functions can't share an in-memory counter — each instance keeps
+-- its own, so a limit of 10 silently becomes 10-per-instance. The counter has
+-- to live somewhere shared, and the database is the only shared thing here.
+create table if not exists public.rate_limits (
+  bucket       text        not null,
+  window_start timestamptz not null,
+  count        int         not null default 0,
+  primary key (bucket, window_start)
+);
+
+create index if not exists rate_limits_window_idx on public.rate_limits (window_start);
+
+alter table public.rate_limits enable row level security;
+-- No policies: reachable only through check_rate_limit().
+
+-- True if the call is allowed, false if the bucket is exhausted. Fixed windows
+-- rather than a sliding log — cheaper, and precision doesn't matter for "stop
+-- someone hammering this endpoint".
+create or replace function public.check_rate_limit(
+  p_bucket text,
+  p_max    int,
+  p_window interval default '1 minute'
+)
+  returns boolean
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_start timestamptz;
+  v_count int;
+begin
+  -- Floor the clock to the window so every caller in the same period shares a
+  -- row, without storing a timestamp per request.
+  v_start := to_timestamp(
+    floor(extract(epoch from now()) / extract(epoch from p_window))
+    * extract(epoch from p_window)
+  );
+
+  insert into public.rate_limits (bucket, window_start, count)
+  values (p_bucket, v_start, 1)
+  on conflict (bucket, window_start)
+    do update set count = public.rate_limits.count + 1
+  returning count into v_count;
+
+  -- Opportunistic cleanup; cheap because of the window index.
+  if random() < 0.01 then
+    delete from public.rate_limits where window_start < now() - interval '1 day';
+  end if;
+
+  return v_count <= p_max;
+end;
+$$;
+
+revoke all on function public.check_rate_limit(text, int, interval) from anon, authenticated;
+
+-- Raises rather than returning false, so an API caller cannot forget to check.
+create or replace function public.enforce_rate_limit(
+  p_bucket text,
+  p_max    int,
+  p_window interval default '1 minute'
+)
+  returns void
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+begin
+  if not public.check_rate_limit(p_bucket, p_max, p_window) then
+    raise exception 'rate_limited';
+  end if;
+end;
+$$;
+
+revoke all on function public.enforce_rate_limit(text, int, interval) from anon;
+grant execute on function public.enforce_rate_limit(text, int, interval) to authenticated;
+
 -- The only write path into analytics_events. Inputs are length-checked so a
--- client cannot stuff the table.
+-- client cannot stuff the table, and the whole function is rate limited —
+-- track() is callable by anon, which makes it the most abusable surface in the
+-- app. Silently dropping over-limit calls is correct here: analytics must never
+-- fail a guest's page.
 create or replace function public.track(
   p_anon_id  text,
   p_name     text,
@@ -785,6 +916,12 @@ as $$
 begin
   if p_anon_id is null or length(p_anon_id) not between 8 and 64 then return; end if;
   if p_name is null or length(p_name) > 60 then return; end if;
+
+  -- 60/minute per browser. A real guest fires a handful of events per session;
+  -- anything near this is a script.
+  if not public.check_rate_limit('track:' || p_anon_id, 60, '1 minute') then
+    return;
+  end if;
 
   insert into public.analytics_events (event_id, anon_id, name, props)
   values (p_event_id, p_anon_id, p_name, coalesce(p_props, '{}'::jsonb));
@@ -807,6 +944,99 @@ as $$
     'live_events', (select count(*) from public.events where status = 'live')
   );
 $$;
+
+-- =============================================================================
+-- RETENTION
+--
+-- The privacy notice promises event data is deleted 12 months after the wedding.
+-- A promise in published text with no mechanism behind it is worse than no
+-- promise, so this is the mechanism. Called on a schedule by /api/cron/purge.
+--
+-- Deleting the event cascades to questions, guests, bets, purchases and
+-- analytics rows. Guest accounts themselves are NOT deleted here — a guest may
+-- be playing at another wedding, and their auth record is theirs to remove from
+-- the account page.
+-- =============================================================================
+create or replace function public.purge_expired_events(p_months int default 12)
+  returns table (purged_event_id uuid, purged_title text)
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+begin
+  return query
+  delete from public.events e
+   where coalesce(e.event_date, e.created_at::date)
+         < (current_date - make_interval(months => p_months))
+  returning e.id, e.title;
+end;
+$$;
+
+revoke all on function public.purge_expired_events(int) from anon, authenticated;
+
+-- =============================================================================
+-- EXPORT (premium)
+--
+-- Final standings plus every bet, for a Host who wants the results out of the
+-- product. Tier-gated in the database because the API route is not the security
+-- boundary — a Host on the free tier calling this directly gets an error.
+-- =============================================================================
+create or replace function public.export_event_results(p_event_id uuid)
+  returns table (
+    display_name text,
+    balance      int,
+    staked       int,
+    bets_count   int,
+    question     text,
+    pick         text,
+    wager        int,
+    odds_at_bet  text,
+    payout       int,
+    settled      boolean,
+    placed_at    timestamptz
+  )
+  language plpgsql
+  security definer
+  set search_path = public
+as $$
+declare
+  v_event public.events;
+  v_tier  public.tiers;
+begin
+  select * into v_event from public.events where id = p_event_id;
+  if not found then raise exception 'event_not_found'; end if;
+  if not public.is_event_owner(p_event_id) then raise exception 'not_authorised'; end if;
+
+  select * into v_tier from public.tiers where key = v_event.tier;
+  if not coalesce(v_tier.export, false) then
+    raise exception 'tier_lacks_export';
+  end if;
+
+  -- Left join so a guest who joined and never bet still appears — "who turned
+  -- up" is part of what a Host is exporting.
+  return query
+  select
+    g.display_name,
+    g.balance,
+    g.staked,
+    g.bets_count,
+    q.prompt,
+    b.pick_label,
+    b.wager,
+    b.odds_at_bet,
+    b.payout,
+    (b.settled_at is not null),
+    b.created_at
+  from public.event_guests g
+  left join public.bets b      on b.guest_id = g.id
+  left join public.questions q on q.id = b.question_id
+  where g.event_id = p_event_id
+  order by g.balance desc, g.display_name, b.created_at;
+end;
+$$;
+
+revoke all on function public.export_event_results(uuid) from anon;
+grant execute on function public.export_event_results(uuid) to authenticated;
 
 -- Reporting views. Service role only — they aggregate across every event.
 create or replace view public.funnel_guest as
@@ -871,24 +1101,66 @@ grant select                 on public.purchases    to authenticated;
 -- No INSERT/UPDATE/DELETE on bets, purchases or analytics_events for any client
 -- role, by design.
 
+-- ⚠️  Postgres grants EXECUTE on every new function to PUBLIC by default.
+-- `revoke ... from anon` does NOT remove that — PUBLIC is a separate grantee,
+-- and anon/authenticated inherit it. Every lockdown below must therefore revoke
+-- from PUBLIC first, then grant back explicitly. Getting this wrong leaves
+-- apply_purchase() callable by any visitor, which is free Premium for anyone
+-- who reads the JS bundle. 03_ops.test.sql asserts the important ones.
+
+revoke all on function public.odds_multiplier(text)                     from public;
+revoke all on function public.is_event_owner(uuid)                      from public;
+revoke all on function public.is_event_guest(uuid)                      from public;
+revoke all on function public.handle_new_user()                         from public;
+revoke all on function public.enforce_question_limit()                  from public;
+revoke all on function public.guard_entitlements()                      from public;
+revoke all on function public.join_event(citext, text)                  from public;
+revoke all on function public.place_bets(uuid, jsonb)                   from public;
+revoke all on function public.settle_question(uuid, text)               from public;
+revoke all on function public.public_leaderboard(uuid)                  from public;
+revoke all on function public.reset_event(uuid)                         from public;
+revoke all on function public.apply_purchase(uuid, text, text, text, int) from public;
+revoke all on function public.set_event_theme(uuid, text, text, text, text) from public;
+revoke all on function public.set_event_slug(uuid, citext)              from public;
+revoke all on function public.track(text, text, uuid, jsonb)            from public;
+revoke all on function public.health_check()                            from public;
+revoke all on function public.check_rate_limit(text, int, interval)     from public;
+revoke all on function public.enforce_rate_limit(text, int, interval)   from public;
+revoke all on function public.purge_expired_events(int)                 from public;
+revoke all on function public.export_event_results(uuid)                from public;
+
+-- Readable without a session: the odds helper, the cached public leaderboard,
+-- the analytics sink, and the health probe.
 grant execute on function public.odds_multiplier(text)          to anon, authenticated;
 grant execute on function public.public_leaderboard(uuid)       to anon, authenticated;
 grant execute on function public.track(text, text, uuid, jsonb) to anon, authenticated;
 grant execute on function public.health_check()                 to anon, authenticated;
 
-grant execute on function public.join_event(citext, text)    to authenticated;
-grant execute on function public.place_bets(uuid, jsonb)     to authenticated;
-grant execute on function public.settle_question(uuid, text) to authenticated;
-grant execute on function public.reset_event(uuid)           to authenticated;
+-- Called from inside RLS policies on `questions`, which anon can read for a
+-- published event — so both roles need EXECUTE or the policy errors.
+grant execute on function public.is_event_owner(uuid) to anon, authenticated;
+grant execute on function public.is_event_guest(uuid) to anon, authenticated;
+
+-- Everything that mutates requires a session.
+grant execute on function public.join_event(citext, text)     to authenticated;
+grant execute on function public.place_bets(uuid, jsonb)      to authenticated;
+grant execute on function public.settle_question(uuid, text)  to authenticated;
+grant execute on function public.reset_event(uuid)            to authenticated;
+grant execute on function public.set_event_slug(uuid, citext) to authenticated;
+grant execute on function public.export_event_results(uuid)   to authenticated;
+grant execute on function public.enforce_rate_limit(text, int, interval) to authenticated;
 grant execute on function public.set_event_theme(uuid, text, text, text, text)
-                                                             to authenticated;
+                                                              to authenticated;
 
-revoke all on function public.apply_purchase(uuid, text, text, text, int)
-  from anon, authenticated;
+-- No client role, ever: these are for the service role and triggers only.
+--   apply_purchase       — grants entitlements
+--   purge_expired_events — deletes events in bulk
+--   check_rate_limit     — the limiter itself must not be bypassable
+--   handle_new_user / enforce_question_limit / guard_entitlements — triggers
 
-revoke all on public.funnel_guest          from anon, authenticated;
-revoke all on public.metric_kill_criterion from anon, authenticated;
-revoke all on public.funnel_host           from anon, authenticated;
+revoke all on public.funnel_guest          from public;
+revoke all on public.metric_kill_criterion from public;
+revoke all on public.funnel_host           from public;
 
 -- =============================================================================
 -- STORAGE (logo uploads)

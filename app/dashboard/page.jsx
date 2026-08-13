@@ -31,11 +31,19 @@ export default async function DashboardPage() {
           <h1 className="font-serif text-4xl text-mauve-deep">Your events</h1>
           <p className="mt-1 text-sm text-mauve/80">{user?.email}</p>
         </div>
-        <form action={signOut}>
-          <button type="submit" className="btn-ghost px-4 py-2 text-sm">
-            Sign out
-          </button>
-        </form>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <form action={signOut}>
+            <button type="submit" className="btn-ghost px-4 py-2 text-sm">
+              Sign out
+            </button>
+          </form>
+          <Link
+            href="/account"
+            className="text-xs text-mauve underline underline-offset-4 hover:text-mauve-deep"
+          >
+            Account &amp; data
+          </Link>
+        </div>
       </div>
 
       {list.length > 0 && (

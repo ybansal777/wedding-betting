@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import UpgradePanel from "./UpgradePanel";
 import ThemePicker from "./ThemePicker";
+import EventSettings from "./EventSettings";
 import {
   addQuestion,
   deleteEvent,
@@ -290,6 +291,7 @@ export default function HostConsole({
 
   const questionsLeft = event.max_questions - questions.length;
   const atQuestionCap = questionsLeft <= 0;
+  const currentTier = tiers.find((t) => t.key === event.tier);
 
   return (
     <div className="mt-4 space-y-5">
@@ -497,9 +499,13 @@ export default function HostConsole({
       </section>
 
       {/* ------------------------------------------------------------- theme */}
-      <ThemePicker
+      <ThemePicker event={event} tier={currentTier} />
+
+      {/* ------------------------------------------------- link and results */}
+      <EventSettings
         event={event}
-        tier={tiers.find((t) => t.key === event.tier)}
+        tier={currentTier}
+        origin={link.replace(/\/e\/.*$/, "")}
       />
 
       {/* ------------------------------------------------------------- share */}

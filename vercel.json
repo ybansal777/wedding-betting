@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/purge",
+      "schedule": "0 4 * * 0"
+    }
+  ]
 }

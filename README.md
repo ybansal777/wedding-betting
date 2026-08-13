@@ -23,9 +23,12 @@ Requirements live in [`.claude/prds/wedding-bets-saas.prd.md`](.claude/prds/wedd
 | 3 · Host console & question templates | ✅ Built |
 | 4 · Monetization (Stripe) | ✅ Built — two tiers; needs live keys and a real test purchase |
 | 5 · Customization (themes, logo) | ✅ Built — 7 themes, custom colours, logo upload |
-| 6 · Day-of hardening | 🟡 Rehearsal mode, health probe and load-test harness built; **the load test has not been run** |
+| 6 · Day-of hardening | 🟡 Rehearsal mode, health probe, error boundaries, rate limiting, CI; **the load test has not been run** |
 | 7 · Launch surface | ✅ Landing, legal, sitemap, robots |
 | 8 · Recap & referral | ✅ Built |
+
+Also built: results export, custom links, the retention purge, a metrics
+dashboard, and branded auth email templates (`docs/auth-emails.md`).
 
 ## Plans
 
@@ -39,7 +42,9 @@ to buying is a decision that costs conversions and buys nothing.
 | Themes | Classic only | All seven |
 | Custom accent colour | — | ✓ |
 | Logo / monogram | — | ✓ |
+| Custom link | — | ✓ |
 | Recap page | — | ✓ |
+| Results export (CSV) | — | ✓ |
 
 Price is still a hypothesis — run the smoke test before locking it.
 
@@ -65,8 +70,10 @@ every opacity utility in the app. The picker converts; the database validates.
 ## Tests
 
 ```bash
-./scripts/test-rls.sh      # 48 assertions, throwaway Docker Postgres
+./scripts/test-rls.sh      # 73 assertions, throwaway Docker Postgres
 ```
+
+CI runs the same suite plus the build on every push (`.github/workflows/ci.yml`).
 
 Tenant isolation is the thing most worth testing here — the PRD calls a
 cross-event leak a release blocker. The suite runs as a **non-superuser**,

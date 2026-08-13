@@ -96,8 +96,9 @@ export default function UpgradePanel({
         <li>· Unlimited guests and questions</li>
         <li>· All seven themes, including dark mode</li>
         <li>· Any accent colour you like</li>
-        <li>· Your own logo or monogram</li>
+        <li>· Your own logo and your own link</li>
         <li>· Post-event recap page to share</li>
+        <li>· Download every result as a spreadsheet</li>
       </ul>
 
       <button
