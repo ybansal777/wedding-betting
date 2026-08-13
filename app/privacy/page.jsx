@@ -45,8 +45,8 @@ export default function PrivacyPage() {
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>
               <strong>Your email address or phone number</strong>, or an
-              identifier from Apple or Google if you signed in that way. This
-              exists so your bets survive a dead phone and a browser refresh.
+              identifier from Google if you signed in that way. This exists so
+              your bets survive a dead phone and a browser refresh.
             </li>
             <li>
               <strong>The display name you chose.</strong> Other guests at that

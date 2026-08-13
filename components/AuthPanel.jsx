@@ -9,13 +9,43 @@ import { useToast } from "./Toast";
 //
 // Ordering here is a product decision, not a layout one. The PRD's biggest
 // single risk is that a guest bounces during signup at a reception, so the
-// cheapest methods come first: one-tap SSO, then phone, then email. Guests
+// cheapest methods come first: Google one-tap, then phone, then email. Guests
 // never see a password field — nobody invents a password standing at a table.
 //
-// Phone OTP requires an SMS provider AND US A2P 10DLC registration, which takes
-// weeks. Until that clears, the button is hidden by env flag rather than failing
-// in front of a guest.
-const PHONE_ENABLED = process.env.NEXT_PUBLIC_ENABLE_PHONE_AUTH === "true";
+// Phone is a first-class method rather than a hidden fallback, which means it
+// has to actually work: it needs an SMS provider configured in Supabase AND, in
+// the US, A2P 10DLC registration. Until that is done Supabase returns a provider
+// error, which the map below turns into something a guest can act on instead of
+// a raw API string.
+const PROVIDER_ERRORS = [
+  {
+    match: /unsupported phone provider|phone provider|sms provider|not enabled/i,
+    message: "Text messages aren't set up yet — use Google or email instead.",
+  },
+  {
+    match: /provider is not enabled|unsupported provider/i,
+    message: "That sign-in method isn't switched on yet. Try email instead.",
+  },
+  {
+    match: /invalid phone|phone.*invalid|E\.164/i,
+    message: "Add your country code, like +1 555 123 4567.",
+  },
+  {
+    match: /rate limit|too many/i,
+    message: "Too many attempts. Wait a minute and try again.",
+  },
+  {
+    match: /expired|invalid token|otp.*invalid/i,
+    message: "That code has expired or doesn't match. Request a new one.",
+  },
+];
+
+const friendlyAuthError = (raw = "") => {
+  for (const { match, message } of PROVIDER_ERRORS) {
+    if (match.test(raw)) return message;
+  }
+  return raw || "Something went wrong. Try again.";
+};
 
 export default function AuthPanel({
   mode = "guest",
@@ -59,11 +89,22 @@ export default function AuthPanel({
   };
 
   const sendPhoneCode = async () => {
+    // Supabase requires E.164. Guests type "(555) 123-4567" — strip the
+    // punctuation and assume +1 only when no country code was given, rather
+    // than rejecting them for formatting.
+    const digits = phone.replace(/[^\d+]/g, "");
+    const e164 = digits.startsWith("+")
+      ? digits
+      : digits.length === 10
+        ? `+1${digits}`
+        : `+${digits}`;
+
     setBusy(true);
     started("phone");
-    const { error } = await supabase.auth.signInWithOtp({ phone });
+    const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
     setBusy(false);
-    if (error) return notify(error.message, { tone: "error" });
+    if (error) return notify(friendlyAuthError(error.message), { tone: "error" });
+    setPhone(e164); // verifyOtp must be given the exact same string
     setStep("phone-code");
     notify("Code sent — check your messages.", { tone: "success" });
   };
@@ -76,7 +117,7 @@ export default function AuthPanel({
       options: { emailRedirectTo: callbackUrl() },
     });
     setBusy(false);
-    if (error) return notify(error.message, { tone: "error" });
+    if (error) return notify(friendlyAuthError(error.message), { tone: "error" });
     setStep("email-code");
     notify("Code sent — check your email.", { tone: "success" });
   };
@@ -89,7 +130,7 @@ export default function AuthPanel({
         : { email, token: code, type: "email" }
     );
     setBusy(false);
-    if (error) return notify(error.message, { tone: "error" });
+    if (error) return notify(friendlyAuthError(error.message), { tone: "error" });
     track(EVENTS.authCompleted, {
       eventId,
       props: { method: type === "sms" ? "phone" : "email", mode },
@@ -109,7 +150,7 @@ export default function AuthPanel({
           })
         : await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) return notify(error.message, { tone: "error" });
+    if (error) return notify(friendlyAuthError(error.message), { tone: "error" });
     if (kind === "signup" && !data.session) {
       return notify("Check your email to confirm your account.", {
         tone: "success",
@@ -129,38 +170,30 @@ export default function AuthPanel({
 
       {step === "choose" && (
         <div className="mt-6 space-y-3">
+          {/* Google first: one tap, no code to wait for, no typing. */}
           <button
             type="button"
             disabled={busy}
-            onClick={() => oauth("apple")}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-mauve-deep py-3.5 font-semibold text-cream-card transition active:scale-[0.98] disabled:opacity-50"
+            onClick={() => oauth("google")}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-mauve/25 bg-cream-card py-3.5 font-semibold text-mauve-deep transition active:scale-[0.98] disabled:opacity-50"
           >
-            Continue with Apple
+            <GoogleMark />
+            Continue with Google
           </button>
 
           <button
             type="button"
             disabled={busy}
-            onClick={() => oauth("google")}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-mauve/25 bg-cream-card py-3.5 font-semibold text-mauve-deep transition active:scale-[0.98] disabled:opacity-50"
+            onClick={() => setStep("phone")}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-mauve-deep py-3.5 font-semibold text-cream-card transition active:scale-[0.98] disabled:opacity-50"
           >
-            Continue with Google
+            <PhoneMark />
+            Continue with phone
           </button>
 
           <div className="scallop-divider py-1">
             <span className="text-xs text-mauve/60">or</span>
           </div>
-
-          {PHONE_ENABLED && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setStep("phone")}
-              className="btn-ghost w-full py-3"
-            >
-              Use my phone number
-            </button>
-          )}
 
           <button
             type="button"
@@ -180,21 +213,27 @@ export default function AuthPanel({
           </label>
           <input
             id="auth-phone"
-            className="field"
+            className="field text-lg"
             type="tel"
             inputMode="tel"
             autoComplete="tel"
-            placeholder="+1 555 123 4567"
+            placeholder="(555) 123-4567"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
+            onKeyDown={(e) =>
+              e.key === "Enter" && phone.trim().length >= 8 && sendPhoneCode()
+            }
           />
+          <p className="text-xs text-mauve/60">
+            US numbers work as-is. Outside the US, start with your country code.
+          </p>
           <button
             type="button"
-            disabled={busy || phone.trim().length < 8}
+            disabled={busy || phone.replace(/\D/g, "").length < 8}
             onClick={sendPhoneCode}
             className="btn-primary w-full py-3"
           >
-            {busy ? "Sending…" : "Send me a code"}
+            {busy ? "Sending…" : "Text me a code"}
           </button>
           <BackLink onClick={() => setStep("choose")} />
         </div>
@@ -300,6 +339,50 @@ export default function AuthPanel({
         </div>
       )}
     </section>
+  );
+}
+
+// Google's mark, inline. Google's branding guidelines expect the real logo on
+// their button, and an external image would be blocked by CSP anyway.
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M45.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1c4.1-3.8 6.6-9.4 6.6-16.1z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 46c5.9 0 10.9-2 14.5-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.500-3.8-12.2-9H4.5v5.7C8.1 41.1 15.4 46 24 46z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M11.8 28.2c-.4-1.3-.7-2.7-.7-4.2s.2-2.9.7-4.2v-5.7H4.5C3 17.1 2.1 20.4 2.1 24s.9 6.9 2.4 9.9l7.3-5.7z"
+      />
+      <path
+        fill="#EA4335"
+        d="M24 10.8c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.2 29.9 2 24 2 15.4 2 8.1 6.9 4.5 14.1l7.3 5.7c1.7-5.2 6.5-9 12.2-9z"
+      />
+    </svg>
+  );
+}
+
+function PhoneMark() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="6" y="2" width="12" height="20" rx="2.5" />
+      <line x1="11" y1="18" x2="13" y2="18" />
+    </svg>
   );
 }
 

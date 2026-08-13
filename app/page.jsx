@@ -173,7 +173,8 @@ export default function HomePage() {
             </dt>
             <dd className="mt-2 text-sm leading-relaxed text-mauve/85">
               No. They scan a QR code and it opens in their browser. They do sign
-              in — with Apple, Google, or email — so their bets follow them if
+              in — with Google, a text message, or email — so their bets follow
+              them if
               their phone dies and they borrow someone else&apos;s.
             </dd>
           </div>

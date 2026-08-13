@@ -112,12 +112,30 @@ There is no migration chain to replay. Future incremental changes go in
 
 ### 2. Configure auth providers
 
-In **Authentication → Providers**, enable **Google** and **Apple**, and add
-`https://<your-domain>/auth/callback` to the redirect allow-list.
+Three sign-in methods, in the order guests see them: **Google**, **phone**, and
+**email**.
 
-Phone OTP stays disabled behind `NEXT_PUBLIC_ENABLE_PHONE_AUTH` until you have an
-SMS provider *and* US A2P 10DLC registration — that takes weeks, and unregistered
-senders get rate-limited into uselessness.
+**Google** — Authentication → Providers → Google. You need a Client ID and
+Secret from the Google Cloud Console, and two URLs have to match exactly or the
+flow fails at the last redirect:
+
+| Where | What to add |
+| --- | --- |
+| Google Cloud → Authorised redirect URIs | `https://<project-ref>.supabase.co/auth/v1/callback` |
+| Supabase → URL Configuration → Redirect URLs | `http://localhost:3000/auth/callback` and your production equivalent |
+
+The first is Google returning to Supabase; the second is Supabase returning to
+this app. Getting one right and not the other is the usual reason sign-in
+"almost" works.
+
+**Phone** — Authentication → Providers → Phone, with an SMS provider (Twilio,
+MessageBird, Vonage). For US numbers this also needs **A2P 10DLC registration**,
+which takes weeks; until it clears, senders are rate-limited into uselessness.
+Until a provider is configured the button shows "text messages aren't set up
+yet" rather than a raw API error, and guests can still use Google or email.
+
+**Email** — works out of the box, but see `docs/auth-emails.md`: the built-in
+mailer is rate-limited and needs replacing with real SMTP before any event.
 
 ### 3. Run it
 
@@ -133,7 +151,8 @@ npm run dev
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server only.** Never prefix with `NEXT_PUBLIC_` — that compiles it into the browser bundle |
 | `NEXT_PUBLIC_SITE_URL` | Public origin for guest share links |
-| `NEXT_PUBLIC_ENABLE_PHONE_AUTH` | `true` only once SMS actually sends |
+| `CRON_SECRET` | Guards the retention purge. `openssl rand -base64 32` |
+| `ADMIN_EMAILS` | Comma-separated; unlocks `/dashboard/metrics` |
 
 ### 4. Deploy
 
@@ -195,10 +214,11 @@ of it has met production.
   throwaway Postgres 16 container. Storage policies in `0004` are skipped there,
   since the `storage` schema doesn't exist locally — those are the least-tested
   lines in the repo.
-- **Apple and Google sign-in are unconfigured.** The buttons work; the providers
-  need enabling in Supabase with a redirect allow-list.
-- **Phone OTP is off** behind `NEXT_PUBLIC_ENABLE_PHONE_AUTH` until an SMS
-  provider and A2P 10DLC registration are in place.
+- **Google sign-in is unconfigured.** The button works; the provider needs
+  enabling in Supabase, with both redirect URLs above set correctly.
+- **Phone sign-in has no SMS provider yet.** It's a primary button, so this is
+  the gap most likely to be noticed — configure Twilio and start A2P 10DLC
+  registration early, since it takes weeks.
 - **The legal pages need a lawyer.** They describe what the code does honestly,
   which is not the same as being a reviewed privacy policy or contract.
 - **No email templating.** Supabase's default OTP and confirmation emails are
