@@ -1,0 +1,321 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ---------------------------------------------------------------------
+     Theme tokens.
+
+     Values are space-separated RGB channels, not hex, because Tailwind
+     composes them as `rgb(var(--x) / <alpha-value>)` — that is what lets
+     `bg-blush/10` keep working while the underlying color is swappable.
+
+     `:root` carries the default "classic" preset, which is the palette the
+     original wedding app shipped with. A Host on a paid tier overrides
+     --c-blush / --c-blush-deep inline on the event wrapper, so their accent
+     flows through every component without any component knowing about it.
+     --------------------------------------------------------------------- */
+  :root {
+    --c-cream: 250 245 233;
+    --c-cream-deep: 243 234 214;
+    --c-cream-card: 255 253 247;
+
+    --c-blush-light: 240 213 216;
+    --c-blush: 217 156 166;
+    --c-blush-deep: 194 124 136;
+
+    --c-mauve-light: 185 169 190;
+    --c-mauve: 155 138 160;
+    --c-mauve-deep: 107 78 94;
+
+    --c-sage-light: 199 207 184;
+    --c-sage: 163 177 138;
+    --c-sage-deep: 126 140 102;
+
+    --c-gold: 201 162 75;
+    --c-shadow: 107 78 94;
+
+    --font-display: "Cormorant Garamond", Georgia, serif;
+    --font-body: "Mulish", system-ui, sans-serif;
+
+    color-scheme: light;
+  }
+
+  /* Cool, modern alternative — same structure, different mood. */
+  [data-preset="midnight"] {
+    --c-cream: 22 24 33;
+    --c-cream-deep: 32 35 47;
+    --c-cream-card: 30 33 44;
+
+    --c-blush-light: 92 106 158;
+    --c-blush: 129 148 214;
+    --c-blush-deep: 156 175 236;
+
+    --c-mauve-light: 108 116 140;
+    --c-mauve: 150 158 182;
+    --c-mauve-deep: 226 230 242;
+
+    --c-sage-light: 96 138 122;
+    --c-sage: 122 176 154;
+    --c-sage-deep: 154 206 184;
+
+    --c-gold: 226 184 106;
+    --c-shadow: 6 8 14;
+
+    color-scheme: dark;
+  }
+
+  /* Terracotta, rust and warm sand — dried flowers and macramé. */
+  [data-preset="boho"] {
+    --c-cream: 248 242 233;
+    --c-cream-deep: 236 224 208;
+    --c-cream-card: 253 249 243;
+
+    --c-blush-light: 233 197 172;
+    --c-blush: 197 124 88;
+    --c-blush-deep: 163 92 60;
+
+    --c-mauve-light: 178 158 140;
+    --c-mauve: 140 118 100;
+    --c-mauve-deep: 74 56 44;
+
+    --c-sage-light: 194 190 158;
+    --c-sage: 150 148 112;
+    --c-sage-deep: 112 110 78;
+
+    --c-gold: 190 146 72;
+    --c-shadow: 74 56 44;
+  }
+
+  /* Electric on near-black. High contrast on purpose — this one is for a
+     late-night dance floor, not a garden lunch. */
+  [data-preset="neon"] {
+    --c-cream: 10 10 16;
+    --c-cream-deep: 22 20 34;
+    --c-cream-card: 18 17 28;
+
+    --c-blush-light: 120 90 180;
+    --c-blush: 236 72 200;
+    --c-blush-deep: 255 128 220;
+
+    --c-mauve-light: 110 108 140;
+    --c-mauve: 160 158 190;
+    --c-mauve-deep: 240 240 255;
+
+    --c-sage-light: 60 200 190;
+    --c-sage: 34 226 208;
+    --c-sage-deep: 120 250 235;
+
+    --c-gold: 250 220 90;
+    --c-shadow: 0 0 0;
+
+    color-scheme: dark;
+  }
+
+  /* Black tie: ink, bone and gold. Art-deco restraint. */
+  [data-preset="noir"] {
+    --c-cream: 24 23 26;
+    --c-cream-deep: 38 36 40;
+    --c-cream-card: 31 30 34;
+
+    --c-blush-light: 168 146 106;
+    --c-blush: 202 176 124;
+    --c-blush-deep: 226 202 150;
+
+    --c-mauve-light: 116 113 120;
+    --c-mauve: 158 155 162;
+    --c-mauve-deep: 240 237 230;
+
+    --c-sage-light: 130 142 132;
+    --c-sage: 162 176 164;
+    --c-sage-deep: 196 208 196;
+
+    --c-gold: 214 182 116;
+    --c-shadow: 0 0 0;
+
+    color-scheme: dark;
+  }
+
+  /* Soft romantic pinks — the classic palette turned up. */
+  [data-preset="blossom"] {
+    --c-cream: 253 246 247;
+    --c-cream-deep: 248 230 234;
+    --c-cream-card: 255 251 252;
+
+    --c-blush-light: 250 206 214;
+    --c-blush: 232 130 152;
+    --c-blush-deep: 202 88 116;
+
+    --c-mauve-light: 196 168 180;
+    --c-mauve: 158 126 140;
+    --c-mauve-deep: 92 58 72;
+
+    --c-sage-light: 206 214 200;
+    --c-sage: 158 176 152;
+    --c-sage-deep: 118 138 112;
+
+    --c-gold: 214 168 96;
+    --c-shadow: 92 58 72;
+  }
+
+  /* Warm garden palette. */
+  [data-preset="garden"] {
+    --c-cream: 247 246 238;
+    --c-cream-deep: 233 235 220;
+    --c-cream-card: 253 253 248;
+
+    --c-blush-light: 226 226 195;
+    --c-blush: 176 158 106;
+    --c-blush-deep: 138 122 76;
+
+    --c-mauve-light: 166 180 160;
+    --c-mauve: 124 141 118;
+    --c-mauve-deep: 58 74 56;
+
+    --c-sage-light: 196 214 186;
+    --c-sage: 138 168 126;
+    --c-sage-deep: 96 126 86;
+
+    --c-gold: 196 156 66;
+    --c-shadow: 58 74 56;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-cream text-mauve-deep font-sans antialiased;
+    /* Soft wash with a faint accent glow in opposite corners. Uses the theme
+       tokens so it re-tints with the preset. */
+    background-color: rgb(var(--c-cream));
+    background-image:
+      radial-gradient(
+        80% 55% at 100% 0%,
+        rgb(var(--c-blush) / 0.16) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        80% 55% at 0% 100%,
+        rgb(var(--c-sage) / 0.14) 0%,
+        transparent 60%
+      );
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  /* Number inputs: drop the spinner clutter on mobile. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* Keyboard users get a visible target everywhere. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-blush-deep));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Raised paper card with a soft double rule, like a stationery frame. */
+  .card {
+    @apply rounded-[1.6rem] bg-cream-card;
+    border: 1px solid rgb(var(--c-mauve-deep) / 0.1);
+    box-shadow:
+      0 10px 30px -12px rgb(var(--c-shadow) / 0.22),
+      inset 0 0 0 1px rgb(255 255 255 / 0.6);
+  }
+
+  /* Letter-spaced small caps used for section labels. */
+  .eyebrow {
+    @apply font-sans font-semibold uppercase text-mauve;
+    font-size: 0.66rem;
+    letter-spacing: 0.22em;
+  }
+
+  /* Primary action — accent gradient with a quiet sheen. */
+  .btn-primary {
+    @apply rounded-2xl font-sans font-bold text-cream-card shadow-soft;
+    background-image: linear-gradient(
+      135deg,
+      rgb(var(--c-blush)) 0%,
+      rgb(var(--c-blush-deep)) 100%
+    );
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      filter 0.18s ease;
+  }
+  .btn-primary:not(:disabled):hover {
+    @apply shadow-lift;
+    filter: brightness(1.04);
+  }
+  .btn-primary:not(:disabled):active {
+    transform: scale(0.97);
+  }
+  .btn-primary:disabled {
+    @apply opacity-50;
+  }
+
+  /* Quiet secondary action. */
+  .btn-ghost {
+    @apply rounded-2xl border-2 border-mauve/25 font-sans font-semibold text-mauve transition;
+  }
+  .btn-ghost:not(:disabled):hover {
+    @apply bg-cream-deep/60;
+  }
+  .btn-ghost:disabled {
+    @apply opacity-50;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-mauve/25 bg-cream/50 px-3 py-2.5 text-sm text-mauve-deep;
+  }
+  .field::placeholder {
+    @apply text-mauve/40;
+  }
+  .field:focus {
+    @apply outline-none ring-2 ring-blush/40;
+  }
+}
+
+@layer utilities {
+  /* Ornamental scalloped divider with a centred diamond. */
+  .scallop-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgb(var(--c-mauve) / 0.5);
+  }
+  .scallop-divider::before,
+  .scallop-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--c-mauve) / 0.45),
+      transparent
+    );
+  }
+
+  .text-shadow-soft {
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
