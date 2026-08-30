@@ -3,6 +3,7 @@ import { serverClient } from "../../../../lib/supabase";
 import AuthPanel from "../../../../components/AuthPanel";
 import GuestNameForm from "../../../../components/GuestNameForm";
 import Track from "../../../../components/Track";
+import Atmosphere from "../../../../components/Atmosphere";
 
 export const metadata = { title: "Join the game" };
 
@@ -11,9 +12,7 @@ export default async function JoinPage({ params }) {
 
   const { data: event } = await supabase
     .from("events")
-    .select(
-      "id, slug, title, partner_a, partner_b, starting_bankroll, published"
-    )
+    .select("id, slug, title, subtitle, starting_bankroll, published, theme")
     .eq("slug", params.slug)
     .maybeSingle();
 
@@ -35,13 +34,25 @@ export default async function JoinPage({ params }) {
     if (guest) redirect(`/e/${event.slug}`);
   }
 
-  const who =
-    event.partner_a && event.partner_b
-      ? `${event.partner_a} & ${event.partner_b}`
-      : event.title;
+  const who = event.title;
+  const theme = event.theme || {};
+  const preset = theme.preset || "classic";
+  const accentStyle = theme.accent
+    ? {
+        "--c-blush": theme.accent,
+        "--c-blush-deep": theme.accentDeep || theme.accent,
+      }
+    : undefined;
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col justify-center gap-5 px-4 py-10">
+    <div
+      className="relative min-h-[100dvh] bg-cream"
+      data-event-shell
+      data-preset={preset}
+      style={accentStyle}
+    >
+      <Atmosphere />
+      <main className="relative z-10 mx-auto flex min-h-[100dvh] max-w-md flex-col justify-center gap-5 px-4 py-10">
       {user ? (
         <>
           {/* Reaching this branch means auth succeeded — including the OAuth
@@ -71,5 +82,6 @@ export default async function JoinPage({ params }) {
         />
       )}
     </main>
+    </div>
   );
 }

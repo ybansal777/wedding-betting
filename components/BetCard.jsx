@@ -20,6 +20,7 @@ export default function BetCard({
   staged, // { optionId, wager, odds, label } | null
   maxWager, // most this question may stake right now
   nameReady,
+  showOdds = false,
   onStage, // (questionId, optionId, odds, label)
   onWager, // (questionId, wager)
   onClear, // (questionId)
@@ -27,13 +28,15 @@ export default function BetCard({
 }) {
   const options = Array.isArray(q.options) ? q.options : [];
   const settled = q.winner != null && q.winner !== "";
+  const priced = showOdds || q.bet_type === "line";
   const optById = (id) => options.find((o) => o.id === id) || null;
   const labelFor = (id, fallback) => optById(id)?.label ?? fallback ?? "—";
 
   // -------------------------------------------------- LOCKED / SETTLED (mine)
   if (myBet) {
-    const won = settled && q.winner === myBet.pick;
-    const lost = settled && q.winner !== myBet.pick;
+    const pushed = settled && q.winner === "push";
+    const won = settled && !pushed && q.winner === myBet.pick;
+    const lost = settled && !pushed && q.winner !== myBet.pick;
     const ret = returnOnWin(myBet.wager, myBet.odds_at_bet);
     const myLabel = myBet.pick_label || labelFor(myBet.pick, "Your pick");
     return (
@@ -41,21 +44,23 @@ export default function BetCard({
         className="card p-5 animate-slide-up"
         style={{ animationDelay: `${index * 60}ms` }}
       >
-        <h3 className="font-serif text-2xl text-mauve-deep leading-snug">
+        <h3 className="font-serif text-2xl leading-snug text-mauve-deep">
           {q.prompt}
         </h3>
-        <div className="mt-3 flex items-center justify-between rounded-2xl bg-cream-deep/70 px-4 py-3">
+        <div className="mt-3 flex items-center justify-between rounded-2xl bg-cream-deep/80 px-4 py-3 ring-1 ring-mauve-deep/10">
           <div>
             <p className="eyebrow text-mauve">Your pick</p>
             <p className="font-serif text-xl text-mauve-deep">{myLabel}</p>
-            <p className="text-xs font-semibold text-mauve/70">
-              {myBet.odds_at_bet} ·{" "}
-              {americanToMultiplier(myBet.odds_at_bet).toFixed(2)}×
-            </p>
+            {priced && (
+              <p className="font-mono text-xs font-semibold text-gold">
+                {myBet.odds_at_bet} ·{" "}
+                {americanToMultiplier(myBet.odds_at_bet).toFixed(2)}×
+              </p>
+            )}
           </div>
           <div className="text-right">
             <p className="eyebrow text-mauve">Wager</p>
-            <p className="font-serif text-xl text-mauve-deep">
+            <p className="font-serif text-xl tabular text-mauve-deep">
               {formatMoney(myBet.wager)}
             </p>
             <p className="text-xs font-semibold text-mauve/70">
@@ -67,12 +72,12 @@ export default function BetCard({
         {!settled && (
           <p className="mt-3 text-sm text-mauve/80">
             Locked in — pays{" "}
-            <span className="font-bold text-blush-deep">{formatMoney(ret)}</span>{" "}
-            if it hits.
+            <span className="font-bold text-blush">{formatMoney(ret)}</span> if
+            it hits.
           </p>
         )}
         {won && (
-          <div className="mt-3 rounded-2xl bg-sage/20 px-4 py-3 text-sage-deep animate-pop-in">
+          <div className="mt-3 animate-pop-in rounded-2xl bg-sage/20 px-4 py-3 text-sage-deep ring-1 ring-sage/40">
             <p className="font-serif text-lg">You won!</p>
             <p className="text-sm">
               +{formatMoney(profitOnWin(myBet.wager, myBet.odds_at_bet))} ·
@@ -81,10 +86,19 @@ export default function BetCard({
           </div>
         )}
         {lost && (
-          <div className="mt-3 rounded-2xl bg-blush-light/50 px-4 py-3 text-blush-deep">
+          <div className="mt-3 rounded-2xl bg-blush/15 px-4 py-3 text-blush ring-1 ring-blush/30">
             <p className="font-serif text-lg">So close.</p>
             <p className="text-sm">
               −{formatMoney(myBet.wager)} · winner: {labelFor(q.winner)}
+            </p>
+          </div>
+        )}
+        {pushed && (
+          <div className="mt-3 rounded-2xl bg-cream-deep/80 px-4 py-3 text-mauve-deep">
+            <p className="font-serif text-lg">Push.</p>
+            <p className="text-sm">
+              Landed right on the line — your {formatMoney(myBet.wager)} wager
+              was refunded.
             </p>
           </div>
         )}
@@ -94,18 +108,20 @@ export default function BetCard({
 
   // -------------------------------------------------- SETTLED, GUEST SAT OUT
   if (settled) {
+    const resultText =
+      q.winner === "push" ? `Push at ${q.actual_value}` : labelFor(q.winner);
     return (
       <article
-        className="card p-5 opacity-90 animate-slide-up"
+        className="card p-5 animate-slide-up opacity-90"
         style={{ animationDelay: `${index * 60}ms` }}
       >
-        <h3 className="font-serif text-2xl text-mauve-deep leading-snug">
+        <h3 className="font-serif text-2xl leading-snug text-mauve-deep">
           {q.prompt}
         </h3>
         <p className="mt-3 text-sm text-mauve/80">
           Final answer:{" "}
-          <span className="font-bold text-mauve-deep">{labelFor(q.winner)}</span>{" "}
-          — you sat this one out.
+          <span className="font-bold text-mauve-deep">{resultText}</span> — you
+          sat this one out.
         </p>
       </article>
     );
@@ -114,53 +130,59 @@ export default function BetCard({
   // -------------------------------------------------- OPEN (stage a bet)
   const picked = staged ? optById(staged.optionId) : null;
   const wager = staged?.wager || 0;
-  // A fresh (unstaged) option can only be chosen if there's money left.
   const outOfMoney = !staged && maxWager < 1;
   const sliderMax = Math.max(1, maxWager);
+  const cols = options.length === 3 ? "grid-cols-3" : "grid-cols-2";
 
   return (
     <article
       className="card p-5 animate-slide-up"
       style={{ animationDelay: `${index * 60}ms` }}
     >
-      <h3 className="font-serif text-2xl text-mauve-deep leading-snug mb-4">
+      <h3 className="font-serif text-2xl leading-snug text-mauve-deep">
         {q.prompt}
       </h3>
+      {q.max_wager != null && (
+        <p className="mt-1 text-xs font-semibold text-mauve/70">
+          Max wager {formatMoney(q.max_wager)}
+        </p>
+      )}
+      <div className="mt-4" />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid ${cols} gap-2.5`}>
         {options.map((o) => {
           const selected = staged?.optionId === o.id;
-          const mult = americanToMultiplier(o.odds);
+          const mult = priced ? americanToMultiplier(o.odds) : null;
           const disabled = !nameReady || (!selected && outOfMoney);
           return (
             <button
               key={o.id}
               type="button"
               disabled={disabled}
+              aria-pressed={selected}
               onClick={() =>
                 selected
                   ? onClear(q.id)
                   : onStage(q.id, o.id, o.odds, o.label)
               }
-              className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 active:scale-[0.97] disabled:opacity-50 ${
-                selected
-                  ? "border-blush bg-blush/10 shadow-soft"
-                  : "border-blush/25 bg-cream/40 hover:border-blush/50"
-              }`}
+              className={`odds-tile ${selected ? "is-picked" : ""}`}
             >
-              <span className="block font-serif text-lg text-mauve-deep leading-tight">
+              <span className="block font-serif text-base leading-tight text-mauve-deep sm:text-lg">
                 {o.label}
               </span>
-              <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="rounded-full bg-cream-deep px-2 py-0.5 text-xs font-semibold text-mauve">
-                  {o.odds}
+              {priced && (
+                <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={`font-mono text-sm tabular ${
+                      selected ? "text-blush" : "text-gold"
+                    }`}
+                  >
+                    {o.odds}
+                  </span>
+                  <span className="rounded-full bg-cream/50 px-2 py-0.5 font-mono text-[10px] font-semibold text-mauve">
+                    {mult.toFixed(2)}×
+                  </span>
                 </span>
-                <span className="rounded-full bg-blush/15 px-2 py-0.5 text-xs font-semibold text-blush-deep">
-                  {mult.toFixed(2)}× payout
-                </span>
-              </span>
-              {selected && (
-                <span className="absolute right-2 top-2 text-blush-deep">✓</span>
               )}
             </button>
           );
@@ -174,16 +196,15 @@ export default function BetCard({
       )}
       {nameReady && outOfMoney && (
         <p className="mt-3 text-center text-sm text-mauve/70">
-          You're out of money — adjust your other bets to free some up.
+          You&apos;re out of money — adjust your other bets to free some up.
         </p>
       )}
 
-      {/* wager controls (staged) */}
       {picked && (
         <div className="mt-4 animate-fade-in">
           <div className="flex items-center justify-between">
             <span className="eyebrow text-mauve">Wager</span>
-            <span className="font-serif text-2xl text-mauve-deep">
+            <span className="font-serif text-2xl tabular text-mauve-deep">
               {formatMoney(wager)}
             </span>
           </div>
@@ -194,19 +215,19 @@ export default function BetCard({
             max={sliderMax}
             value={Math.min(wager, sliderMax)}
             onChange={(e) => onWager(q.id, Number(e.target.value))}
-            className="mt-2 w-full accent-blush"
+            className="mt-3 w-full"
           />
 
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {QUICK.filter((a) => a <= maxWager).map((a) => (
               <button
                 key={a}
                 type="button"
                 onClick={() => onWager(q.id, a)}
-                className={`rounded-xl border px-3 py-1.5 text-sm font-semibold transition ${
+                className={`rounded-full border px-3.5 py-1.5 font-mono text-sm font-semibold transition ${
                   wager === a
-                    ? "border-blush bg-blush text-cream-card"
-                    : "border-blush/30 text-mauve hover:bg-blush/10"
+                    ? "border-blush bg-blush text-foam"
+                    : "border-blush/30 text-mauve-deep hover:bg-blush/10"
                 }`}
               >
                 {a}
@@ -215,27 +236,27 @@ export default function BetCard({
             <button
               type="button"
               onClick={() => onWager(q.id, maxWager)}
-              className={`rounded-xl border px-3 py-1.5 text-sm font-semibold transition ${
+              className={`rounded-full border px-3.5 py-1.5 font-mono text-sm font-semibold transition ${
                 wager === maxWager
-                  ? "border-sage bg-sage text-cream-card"
-                  : "border-sage/40 text-sage-deep hover:bg-sage/10"
+                  ? "border-sage bg-sage text-foam"
+                  : "border-sage/40 text-sage hover:bg-sage/10"
               }`}
             >
-              Max ({formatMoney(maxWager)})
+              Max {formatMoney(maxWager)}
             </button>
             <button
               type="button"
               onClick={() => onClear(q.id)}
-              className="ml-auto rounded-xl border border-mauve/25 px-3 py-1.5 text-sm font-semibold text-mauve transition hover:bg-cream-deep/60"
+              className="ml-auto rounded-full border border-mauve/25 px-3.5 py-1.5 text-sm font-semibold text-mauve transition hover:bg-cream-deep/60"
             >
               Remove
             </button>
           </div>
 
-          <p className="mt-3 rounded-2xl bg-cream-deep/60 px-4 py-3 text-sm text-mauve-deep">
+          <p className="mt-3 rounded-2xl bg-cream-deep/70 px-4 py-3 text-sm text-mauve-deep ring-1 ring-mauve-deep/10">
             Bet <b>{formatMoney(wager)}</b> on{" "}
-            <b className="text-blush-deep">{picked.label}</b> → win{" "}
-            <b className="text-sage-deep">
+            <b className="text-blush">{picked.label}</b> → win{" "}
+            <b className="text-sage">
               {formatMoney(returnOnWin(wager, picked.odds))}
             </b>{" "}
             <span className="text-mauve/70">

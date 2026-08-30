@@ -50,7 +50,7 @@ export default async function AccountPage() {
             Events you host: <strong>{hosted.length}</strong>
           </li>
           <li>
-            Weddings you play at: <strong>{guestCount ?? 0}</strong>
+            Events you play at: <strong>{guestCount ?? 0}</strong>
           </li>
         </ul>
         <p className="mt-3 text-xs text-mauve/70">

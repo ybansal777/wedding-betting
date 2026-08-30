@@ -79,7 +79,7 @@ export default function UpgradePanel({
         </span>
       </div>
       <p className="mt-1 text-xs text-mauve/70">
-        One payment for this wedding. Never a subscription, nothing to cancel.
+        One payment for this event. Never a subscription, nothing to cancel.
       </p>
 
       {(nearGuestCap || nearQuestionCap) && (

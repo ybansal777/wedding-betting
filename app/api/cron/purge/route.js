@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { serviceClient } from "../../../../lib/supabase";
 
 // Honours the retention promise in the privacy notice: event data is deleted
-// 12 months after the wedding.
+// 12 months after the event.
 //
 // This endpoint deletes real customer data in bulk, so it refuses to run
 // without a matching CRON_SECRET. A cron route with no auth is a delete button
@@ -34,7 +34,7 @@ async function handle(request) {
     }
 
     const purged = data ?? [];
-    // Logged deliberately: deleting a couple's wedding data should leave a
+    // Logged deliberately: deleting a host's event data should leave a
     // trace, even though the data itself is gone.
     if (purged.length > 0) {
       console.info(

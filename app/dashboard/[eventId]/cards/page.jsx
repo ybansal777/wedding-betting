@@ -15,9 +15,7 @@ export default async function CardsPage({ params }) {
 
   const { data: event } = await supabase
     .from("events")
-    .select(
-      "id, slug, title, partner_a, partner_b, starting_bankroll, published"
-    )
+    .select("id, slug, title, subtitle, starting_bankroll, published")
     .eq("id", params.eventId)
     .maybeSingle();
 
@@ -27,10 +25,7 @@ export default async function CardsPage({ params }) {
   const url = `${origin}/e/${event.slug}`;
   const qr = origin ? await qrDataUrl(url, { size: 600, margin: 1 }) : null;
 
-  const who =
-    event.partner_a && event.partner_b
-      ? `${event.partner_a} & ${event.partner_b}`
-      : event.title;
+  const who = event.subtitle ? `${event.title} — ${event.subtitle}` : event.title;
 
   return (
     <>

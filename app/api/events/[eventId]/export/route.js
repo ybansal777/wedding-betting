@@ -70,7 +70,7 @@ export async function GET(_request, { params }) {
     .eq("id", eventId)
     .maybeSingle();
 
-  const filename = `${event?.slug || "wedding-bets"}-results.csv`;
+  const filename = `${event?.slug || "lets-bet"}-results.csv`;
 
   return new NextResponse(body, {
     headers: {

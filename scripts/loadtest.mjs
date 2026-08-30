@@ -13,7 +13,7 @@
 //
 // SAFETY: the target URL must be passed explicitly. There is no default and no
 // environment fallback, so this cannot wander onto a production deployment by
-// accident. Do not point it at a live event's URL during a real wedding.
+// accident. Do not point it at a live event's URL during a real event.
 
 const args = process.argv.slice(2);
 const url = args.find((a) => a.startsWith("http"));

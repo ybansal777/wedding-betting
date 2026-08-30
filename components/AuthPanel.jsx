@@ -175,7 +175,7 @@ export default function AuthPanel({
             type="button"
             disabled={busy}
             onClick={() => oauth("google")}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-mauve/25 bg-cream-card py-3.5 font-semibold text-mauve-deep transition active:scale-[0.98] disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-mauve/25 bg-cream-card py-3.5 font-semibold text-mauve-deep transition hover:border-blush/40 hover:shadow-soft active:scale-[0.98] disabled:opacity-50"
           >
             <GoogleMark />
             Continue with Google

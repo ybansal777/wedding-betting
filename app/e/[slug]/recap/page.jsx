@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { serverClient } from "../../../../lib/supabase";
 import { formatMoney } from "../../../../lib/odds";
-import FloralCorners from "../../../../components/FloralCorners";
+import Atmosphere from "../../../../components/Atmosphere";
 
 // The referral loop, and the thing that makes the game memorable rather than
 // merely fun: a final standings page the winner will screenshot into a group
@@ -11,15 +11,12 @@ export async function generateMetadata({ params }) {
   const supabase = await serverClient();
   const { data: event } = await supabase
     .from("events")
-    .select("title, partner_a, partner_b")
+    .select("title, subtitle")
     .eq("slug", params.slug)
     .maybeSingle();
 
   if (!event) return { title: "Recap" };
-  const who =
-    event.partner_a && event.partner_b
-      ? `${event.partner_a} & ${event.partner_b}`
-      : event.title;
+  const who = event.subtitle ? `${event.title} — ${event.subtitle}` : event.title;
 
   return {
     title: `${who} — final standings`,
@@ -53,7 +50,7 @@ export default async function RecapPage({ params }) {
     supabase.rpc("public_leaderboard", { p_event_id: event.id }),
     supabase
       .from("questions")
-      .select("id, prompt, options, winner")
+      .select("id, prompt, options, winner, bet_type, actual_value")
       .eq("event_id", event.id)
       .not("winner", "is", null)
       .order("sort"),
@@ -62,21 +59,26 @@ export default async function RecapPage({ params }) {
   const theme = event.theme || {};
   const entries = board ?? [];
   const settled = questions ?? [];
-  const who =
-    event.partner_a && event.partner_b
-      ? `${event.partner_a} & ${event.partner_b}`
-      : event.title;
 
-  const labelFor = (q) =>
-    (Array.isArray(q.options) ? q.options : []).find((o) => o.id === q.winner)
-      ?.label ?? "—";
+  const labelFor = (q) => {
+    if (q.bet_type === "line" && q.winner === "push") {
+      return `Push at ${q.actual_value} — everyone refunded`;
+    }
+    const label =
+      (Array.isArray(q.options) ? q.options : []).find((o) => o.id === q.winner)
+        ?.label ?? "—";
+    return q.bet_type === "line" && q.actual_value != null
+      ? `${label} (actual: ${q.actual_value})`
+      : label;
+  };
 
   const podium = entries.slice(0, 3);
   const rest = entries.slice(3);
 
   return (
     <div
-      className="relative min-h-[100dvh]"
+      className="relative min-h-[100dvh] bg-cream"
+      data-event-shell
       data-preset={theme.preset || "classic"}
       style={
         theme.accent
@@ -87,13 +89,21 @@ export default async function RecapPage({ params }) {
           : undefined
       }
     >
-      <FloralCorners />
+      <Atmosphere />
       <main className="relative z-10 mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-4 pb-16 pt-10">
         <header className="text-center">
-          <p className="eyebrow text-blush-deep">Final standings</p>
+          <p className="eyebrow inline-flex items-center gap-2 text-gold">
+            <span className="live-dot" />
+            Final standings
+          </p>
           <h1 className="mt-2 font-serif text-4xl leading-tight text-mauve-deep">
-            {who}
+            {event.title}
           </h1>
+          {event.subtitle && (
+            <p className="mt-1 text-sm font-semibold text-blush-deep">
+              {event.subtitle}
+            </p>
+          )}
           {event.event_date && (
             <p className="mt-1 text-sm text-mauve/70">{event.event_date}</p>
           )}
@@ -115,7 +125,7 @@ export default async function RecapPage({ params }) {
                   The winners
                 </h2>
                 <div className="scallop-divider my-4">
-                  <span className="text-xs text-blush">✦</span>
+                  <span className="text-xs text-gold">◆</span>
                 </div>
                 <ol className="space-y-2">
                   {podium.map((e, i) => (
@@ -123,7 +133,7 @@ export default async function RecapPage({ params }) {
                       key={e.display_name}
                       className={`flex items-center gap-3 rounded-2xl px-3 py-3 ${
                         i === 0
-                          ? "bg-gradient-to-r from-gold/25 to-cream-card ring-1 ring-gold/40"
+                          ? "bg-gold/15 ring-1 ring-gold/40"
                           : "bg-cream-deep/40"
                       }`}
                     >
@@ -191,10 +201,10 @@ export default async function RecapPage({ params }) {
 
         <footer className="mt-auto pt-6 text-center">
           <div className="scallop-divider mb-4">
-            <span className="text-xs text-blush">✦</span>
+            <span className="text-xs text-gold">◆</span>
           </div>
           <p className="text-sm text-mauve/80">
-            Want this at your wedding?{" "}
+            Want this at your next event?{" "}
             <Link href="/" className="font-semibold underline underline-offset-4">
               Set one up
             </Link>

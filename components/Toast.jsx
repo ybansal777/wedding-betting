@@ -10,9 +10,9 @@ const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
 
 const TONES = {
-  info: "bg-mauve-deep text-cream-card",
-  error: "bg-blush-deep text-cream-card",
-  success: "bg-sage-deep text-cream-card",
+  info: "bg-cream-card text-mauve-deep ring-1 ring-mauve-deep/15",
+  error: "bg-blush-deep text-foam",
+  success: "bg-sage text-cream",
 };
 
 export function ToastProvider({ children }) {

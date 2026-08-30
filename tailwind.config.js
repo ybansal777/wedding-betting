@@ -37,14 +37,17 @@ export default {
           deep: themed("--c-sage-deep"),
         },
         gold: themed("--c-gold"),
+        foam: themed("--c-foam"),
       },
       fontFamily: {
-        serif: ["var(--font-display)", "Georgia", "serif"],
+        serif: ["var(--font-display)", "Arial", "sans-serif"],
         sans: ["var(--font-body)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        soft: "0 10px 30px -12px rgb(var(--c-shadow) / 0.25)",
-        lift: "0 18px 50px -18px rgb(var(--c-shadow) / 0.35)",
+        soft: "0 10px 30px -12px rgb(var(--c-shadow) / 0.4)",
+        lift: "0 22px 50px -16px rgb(var(--c-blush) / 0.45)",
+        glow: "0 0 40px -8px rgb(var(--c-blush) / 0.55)",
       },
       keyframes: {
         fadeIn: { from: { opacity: 0 }, to: { opacity: 1 } },

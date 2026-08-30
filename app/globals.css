@@ -10,174 +10,169 @@
      composes them as `rgb(var(--x) / <alpha-value>)` — that is what lets
      `bg-blush/10` keep working while the underlying color is swappable.
 
-     `:root` carries the default "classic" preset, which is the palette the
-     original wedding app shipped with. A Host on a paid tier overrides
-     --c-blush / --c-blush-deep inline on the event wrapper, so their accent
-     flows through every component without any component knowing about it.
+     `:root` is Classic — a jewel betting floor: royal indigo, hot magenta,
+     lemon gold, aqua for a win. Saturated enough to feel like a night out,
+     never a cream page. `--c-foam` is always a warm off-white so type on a
+     filled button stays readable when the card surface itself goes dark.
+
+     `classic` and `game_night` are the two free presets; the rest require
+     the themes entitlement — see set_event_theme() in supabase/schema.sql.
+     A Host on a paid tier overrides --c-blush / --c-blush-deep inline on
+     the event wrapper, so their accent flows through every component
+     without any component knowing about it.
      --------------------------------------------------------------------- */
   :root {
-    --c-cream: 250 245 233;
-    --c-cream-deep: 243 234 214;
-    --c-cream-card: 255 253 247;
+    --c-cream: 22 16 78;
+    --c-cream-deep: 36 28 108;
+    --c-cream-card: 48 36 132;
 
-    --c-blush-light: 240 213 216;
-    --c-blush: 217 156 166;
-    --c-blush-deep: 194 124 136;
+    --c-blush-light: 255 140 196;
+    --c-blush: 255 46 130;
+    --c-blush-deep: 214 20 108;
 
-    --c-mauve-light: 185 169 190;
-    --c-mauve: 155 138 160;
-    --c-mauve-deep: 107 78 94;
+    --c-mauve-light: 156 148 210;
+    --c-mauve: 196 188 236;
+    --c-mauve-deep: 252 248 255;
 
-    --c-sage-light: 199 207 184;
-    --c-sage: 163 177 138;
-    --c-sage-deep: 126 140 102;
+    --c-sage-light: 140 250 220;
+    --c-sage: 20 236 196;
+    --c-sage-deep: 8 196 164;
 
-    --c-gold: 201 162 75;
-    --c-shadow: 107 78 94;
+    --c-gold: 255 214 48;
+    --c-foam: 255 248 246;
+    --c-shadow: 8 0 32;
 
-    --font-display: "Cormorant Garamond", Georgia, serif;
-    --font-body: "Mulish", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+
+  /* Game Night — free, alongside classic. Cool navy board, dice-blue
+     accent, arcade mint for wins. */
+  [data-preset="game_night"] {
+    --c-cream: 6 28 64;
+    --c-cream-deep: 10 44 92;
+    --c-cream-card: 14 56 118;
+
+    --c-blush-light: 140 210 255;
+    --c-blush: 32 168 255;
+    --c-blush-deep: 12 124 230;
+
+    --c-mauve-light: 120 168 210;
+    --c-mauve: 168 208 240;
+    --c-mauve-deep: 244 252 255;
+
+    --c-sage-light: 140 255 220;
+    --c-sage: 16 240 188;
+    --c-sage-deep: 8 196 156;
+
+    --c-gold: 255 220 56;
+    --c-foam: 244 252 255;
+    --c-shadow: 0 12 32;
+
+    color-scheme: dark;
+  }
+
+  /* Birthday — premium. Saturated peach room, candle-pink stake. Light,
+     but never white. */
+  [data-preset="birthday"] {
+    --c-cream: 255 168 196;
+    --c-cream-deep: 255 132 176;
+    --c-cream-card: 255 214 228;
+
+    --c-blush-light: 255 110 180;
+    --c-blush: 236 16 118;
+    --c-blush-deep: 190 8 92;
+
+    --c-mauve-light: 176 88 120;
+    --c-mauve: 132 40 80;
+    --c-mauve-deep: 56 8 36;
+
+    --c-sage-light: 120 236 210;
+    --c-sage: 8 168 148;
+    --c-sage-deep: 4 128 112;
+
+    --c-gold: 255 176 24;
+    --c-foam: 255 250 248;
+    --c-shadow: 96 16 48;
 
     color-scheme: light;
   }
 
-  /* Cool, modern alternative — same structure, different mood. */
-  [data-preset="midnight"] {
-    --c-cream: 22 24 33;
-    --c-cream-deep: 32 35 47;
-    --c-cream-card: 30 33 44;
+  /* Bachelorette — premium. Charcoal-plum dance floor, hot-pink accent,
+     champagne standing in for the usual green. */
+  [data-preset="bachelorette"] {
+    --c-cream: 48 8 42;
+    --c-cream-deep: 76 14 64;
+    --c-cream-card: 92 18 78;
 
-    --c-blush-light: 92 106 158;
-    --c-blush: 129 148 214;
-    --c-blush-deep: 156 175 236;
+    --c-blush-light: 255 130 220;
+    --c-blush: 255 36 176;
+    --c-blush-deep: 214 12 140;
 
-    --c-mauve-light: 108 116 140;
-    --c-mauve: 150 158 182;
-    --c-mauve-deep: 226 230 242;
+    --c-mauve-light: 196 140 188;
+    --c-mauve: 230 188 220;
+    --c-mauve-deep: 255 244 252;
 
-    --c-sage-light: 96 138 122;
-    --c-sage: 122 176 154;
-    --c-sage-deep: 154 206 184;
+    --c-sage-light: 255 220 150;
+    --c-sage: 255 188 72;
+    --c-sage-deep: 220 152 36;
 
-    --c-gold: 226 184 106;
-    --c-shadow: 6 8 14;
-
-    color-scheme: dark;
-  }
-
-  /* Terracotta, rust and warm sand — dried flowers and macramé. */
-  [data-preset="boho"] {
-    --c-cream: 248 242 233;
-    --c-cream-deep: 236 224 208;
-    --c-cream-card: 253 249 243;
-
-    --c-blush-light: 233 197 172;
-    --c-blush: 197 124 88;
-    --c-blush-deep: 163 92 60;
-
-    --c-mauve-light: 178 158 140;
-    --c-mauve: 140 118 100;
-    --c-mauve-deep: 74 56 44;
-
-    --c-sage-light: 194 190 158;
-    --c-sage: 150 148 112;
-    --c-sage-deep: 112 110 78;
-
-    --c-gold: 190 146 72;
-    --c-shadow: 74 56 44;
-  }
-
-  /* Electric on near-black. High contrast on purpose — this one is for a
-     late-night dance floor, not a garden lunch. */
-  [data-preset="neon"] {
-    --c-cream: 10 10 16;
-    --c-cream-deep: 22 20 34;
-    --c-cream-card: 18 17 28;
-
-    --c-blush-light: 120 90 180;
-    --c-blush: 236 72 200;
-    --c-blush-deep: 255 128 220;
-
-    --c-mauve-light: 110 108 140;
-    --c-mauve: 160 158 190;
-    --c-mauve-deep: 240 240 255;
-
-    --c-sage-light: 60 200 190;
-    --c-sage: 34 226 208;
-    --c-sage-deep: 120 250 235;
-
-    --c-gold: 250 220 90;
-    --c-shadow: 0 0 0;
+    --c-gold: 255 214 96;
+    --c-foam: 255 246 252;
+    --c-shadow: 24 0 20;
 
     color-scheme: dark;
   }
 
-  /* Black tie: ink, bone and gold. Art-deco restraint. */
-  [data-preset="noir"] {
-    --c-cream: 24 23 26;
-    --c-cream-deep: 38 36 40;
-    --c-cream-card: 31 30 34;
+  /* Bachelor — premium. Whiskey-lounge: deep mahogany, amber stake,
+     olive-leather counter-accent. */
+  [data-preset="bachelor"] {
+    --c-cream: 42 10 28;
+    --c-cream-deep: 68 16 40;
+    --c-cream-card: 86 22 50;
 
-    --c-blush-light: 168 146 106;
-    --c-blush: 202 176 124;
-    --c-blush-deep: 226 202 150;
+    --c-blush-light: 255 168 110;
+    --c-blush: 255 96 36;
+    --c-blush-deep: 214 64 16;
 
-    --c-mauve-light: 116 113 120;
-    --c-mauve: 158 155 162;
-    --c-mauve-deep: 240 237 230;
+    --c-mauve-light: 196 140 148;
+    --c-mauve: 230 188 186;
+    --c-mauve-deep: 255 244 236;
 
-    --c-sage-light: 130 142 132;
-    --c-sage: 162 176 164;
-    --c-sage-deep: 196 208 196;
+    --c-sage-light: 196 230 110;
+    --c-sage: 156 214 48;
+    --c-sage-deep: 116 172 24;
 
-    --c-gold: 214 182 116;
-    --c-shadow: 0 0 0;
+    --c-gold: 255 196 56;
+    --c-foam: 255 246 236;
+    --c-shadow: 24 0 8;
 
     color-scheme: dark;
   }
 
-  /* Soft romantic pinks — the classic palette turned up. */
-  [data-preset="blossom"] {
-    --c-cream: 253 246 247;
-    --c-cream-deep: 248 230 234;
-    --c-cream-card: 255 251 252;
+  /* Reunion — premium. Golden-hour clay, terracotta stake, olive
+     counter-accent. Daytime gathering that still isn't a white page. */
+  [data-preset="reunion"] {
+    --c-cream: 255 168 88;
+    --c-cream-deep: 242 132 56;
+    --c-cream-card: 255 210 150;
 
-    --c-blush-light: 250 206 214;
-    --c-blush: 232 130 152;
-    --c-blush-deep: 202 88 116;
+    --c-blush-light: 255 120 88;
+    --c-blush: 232 56 28;
+    --c-blush-deep: 188 32 16;
 
-    --c-mauve-light: 196 168 180;
-    --c-mauve: 158 126 140;
-    --c-mauve-deep: 92 58 72;
+    --c-mauve-light: 176 96 64;
+    --c-mauve: 132 56 32;
+    --c-mauve-deep: 48 16 10;
 
-    --c-sage-light: 206 214 200;
-    --c-sage: 158 176 152;
-    --c-sage-deep: 118 138 112;
+    --c-sage-light: 176 220 96;
+    --c-sage: 88 156 28;
+    --c-sage-deep: 60 116 16;
 
-    --c-gold: 214 168 96;
-    --c-shadow: 92 58 72;
-  }
+    --c-gold: 255 176 24;
+    --c-foam: 255 250 240;
+    --c-shadow: 80 24 8;
 
-  /* Warm garden palette. */
-  [data-preset="garden"] {
-    --c-cream: 247 246 238;
-    --c-cream-deep: 233 235 220;
-    --c-cream-card: 253 253 248;
-
-    --c-blush-light: 226 226 195;
-    --c-blush: 176 158 106;
-    --c-blush-deep: 138 122 76;
-
-    --c-mauve-light: 166 180 160;
-    --c-mauve: 124 141 118;
-    --c-mauve-deep: 58 74 56;
-
-    --c-sage-light: 196 214 186;
-    --c-sage: 138 168 126;
-    --c-sage-deep: 96 126 86;
-
-    --c-gold: 196 156 66;
-    --c-shadow: 58 74 56;
+    color-scheme: light;
   }
 
   html {
@@ -186,22 +181,14 @@
 
   body {
     @apply bg-cream text-mauve-deep font-sans antialiased;
-    /* Soft wash with a faint accent glow in opposite corners. Uses the theme
-       tokens so it re-tints with the preset. */
     background-color: rgb(var(--c-cream));
-    background-image:
-      radial-gradient(
-        80% 55% at 100% 0%,
-        rgb(var(--c-blush) / 0.16) 0%,
-        transparent 60%
-      ),
-      radial-gradient(
-        80% 55% at 0% 100%,
-        rgb(var(--c-sage) / 0.14) 0%,
-        transparent 60%
-      );
-    background-attachment: fixed;
     min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: rgb(var(--c-blush) / 0.35);
+    color: rgb(var(--c-mauve-deep));
   }
 
   /* Number inputs: drop the spinner clutter on mobile. */
@@ -214,57 +201,81 @@
     -moz-appearance: textfield;
   }
 
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: rgb(var(--c-cream-deep));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 999px;
+    background: rgb(var(--c-blush));
+    box-shadow: 0 0 0 4px rgb(var(--c-blush) / 0.25);
+    cursor: pointer;
+  }
+
   /* Keyboard users get a visible target everywhere. */
   :focus-visible {
-    outline: 2px solid rgb(var(--c-blush-deep));
-    outline-offset: 2px;
+    outline: 2px solid rgb(var(--c-blush));
+    outline-offset: 3px;
   }
 }
 
 @layer components {
-  /* Raised paper card with a soft double rule, like a stationery frame. */
+  /* Glass betting-board card. Hairline, a hint of the stake colour in the
+     glow, enough blur that the house lights show through. */
   .card {
-    @apply rounded-[1.6rem] bg-cream-card;
+    @apply rounded-2xl;
+    background: rgb(var(--c-cream-card) / 0.78);
     border: 1px solid rgb(var(--c-mauve-deep) / 0.1);
     box-shadow:
-      0 10px 30px -12px rgb(var(--c-shadow) / 0.22),
-      inset 0 0 0 1px rgb(255 255 255 / 0.6);
+      0 0 0 1px rgb(var(--c-blush) / 0.06),
+      0 1px 0 rgb(var(--c-foam) / 0.06) inset,
+      0 18px 40px -20px rgb(var(--c-shadow) / 0.55);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
   }
 
-  /* Letter-spaced small caps used for section labels. */
+  /* Monospace small caps, like a label on a tote board. */
   .eyebrow {
-    @apply font-sans font-semibold uppercase text-mauve;
-    font-size: 0.66rem;
-    letter-spacing: 0.22em;
+    @apply font-mono font-medium uppercase text-mauve;
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
   }
 
-  /* Primary action — accent gradient with a quiet sheen. */
+  /* Primary action — solid fill, a little inner sheen, foam type so it
+     stays readable on every preset. */
   .btn-primary {
-    @apply rounded-2xl font-sans font-bold text-cream-card shadow-soft;
+    @apply rounded-xl font-sans font-semibold tracking-wide text-foam shadow-soft;
+    background-color: rgb(var(--c-blush));
     background-image: linear-gradient(
-      135deg,
-      rgb(var(--c-blush)) 0%,
-      rgb(var(--c-blush-deep)) 100%
+      180deg,
+      rgb(255 255 255 / 0.14),
+      transparent 55%
     );
     transition:
-      transform 0.18s ease,
-      box-shadow 0.18s ease,
-      filter 0.18s ease;
+      background-color 0.15s ease,
+      transform 0.12s ease,
+      box-shadow 0.15s ease;
   }
   .btn-primary:not(:disabled):hover {
     @apply shadow-lift;
-    filter: brightness(1.04);
+    background-color: rgb(var(--c-blush-deep));
   }
   .btn-primary:not(:disabled):active {
-    transform: scale(0.97);
+    transform: scale(0.98);
   }
   .btn-primary:disabled {
     @apply opacity-50;
   }
 
-  /* Quiet secondary action. */
   .btn-ghost {
-    @apply rounded-2xl border-2 border-mauve/25 font-sans font-semibold text-mauve transition;
+    @apply rounded-xl border border-mauve/30 font-sans font-semibold text-mauve-deep/80 transition;
   }
   .btn-ghost:not(:disabled):hover {
     @apply bg-cream-deep/60;
@@ -274,40 +285,261 @@
   }
 
   .field {
-    @apply w-full rounded-xl border border-mauve/25 bg-cream/50 px-3 py-2.5 text-sm text-mauve-deep;
+    @apply w-full rounded-xl border border-mauve/25 bg-cream-deep/70 px-3 py-2.5 text-sm text-mauve-deep;
   }
   .field::placeholder {
     @apply text-mauve/40;
   }
   .field:focus {
-    @apply outline-none ring-2 ring-blush/40;
+    @apply outline-none ring-2 ring-blush/50;
+  }
+
+  /* Odds tile — the thing you tap to put money on a side. */
+  .odds-tile {
+    @apply relative rounded-2xl border-2 p-4 text-left transition-all duration-200;
+    border-color: rgb(var(--c-mauve-deep) / 0.12);
+    background: rgb(var(--c-cream-deep) / 0.55);
+  }
+  .odds-tile:not(:disabled):hover {
+    border-color: rgb(var(--c-blush) / 0.45);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -16px rgb(var(--c-blush) / 0.55);
+  }
+  .odds-tile:not(:disabled):active {
+    transform: scale(0.97);
+  }
+  .odds-tile[aria-pressed="true"],
+  .odds-tile.is-picked {
+    border-color: rgb(var(--c-blush));
+    background: rgb(var(--c-blush) / 0.16);
+    box-shadow:
+      0 0 0 1px rgb(var(--c-blush) / 0.35),
+      0 12px 32px -12px rgb(var(--c-blush) / 0.55);
+  }
+  .odds-tile:disabled {
+    @apply opacity-50;
   }
 }
 
 @layer utilities {
-  /* Ornamental scalloped divider with a centred diamond. */
+  /* Ticket-stub perforation. */
   .scallop-divider {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    color: rgb(var(--c-mauve) / 0.5);
+    color: rgb(var(--c-gold) / 0.7);
   }
   .scallop-divider::before,
   .scallop-divider::after {
     content: "";
     flex: 1;
     height: 1px;
-    background: linear-gradient(
+    background: repeating-linear-gradient(
       90deg,
-      transparent,
-      rgb(var(--c-mauve) / 0.45),
-      transparent
+      rgb(var(--c-mauve) / 0.45) 0 6px,
+      transparent 6px 11px
     );
   }
 
   .text-shadow-soft {
-    text-shadow: 0 1px 0 rgb(255 255 255 / 0.6);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.15);
   }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   House lights — the signature backdrop. Three slow orbs in the theme
+   colours plus a grain overlay so the room never reads as a flat fill.
+   --------------------------------------------------------------------- */
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Event pages bring their own Atmosphere inside [data-event-shell] so the
+   orbs pick up the Host's theme. Hide the layout copy or the grain stacks.
+   A host-console phone preview also uses [data-preset] and must not trip this. */
+body:has([data-event-shell]) > .atmosphere {
+  display: none;
+}
+
+.atmosphere .orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(80px);
+  will-change: transform;
+}
+
+.atmosphere .orb-a {
+  width: 55vw;
+  height: 55vw;
+  max-width: 42rem;
+  max-height: 42rem;
+  top: -12%;
+  left: -8%;
+  background: rgb(var(--c-blush) / 0.55);
+  animation: orb-drift-a 18s ease-in-out infinite alternate;
+}
+
+.atmosphere .orb-b {
+  width: 50vw;
+  height: 50vw;
+  max-width: 36rem;
+  max-height: 36rem;
+  top: 8%;
+  right: -12%;
+  background: rgb(var(--c-gold) / 0.45);
+  animation: orb-drift-b 22s ease-in-out infinite alternate;
+}
+
+.atmosphere .orb-c {
+  width: 60vw;
+  height: 60vw;
+  max-width: 40rem;
+  max-height: 40rem;
+  bottom: -18%;
+  left: 18%;
+  background: rgb(var(--c-sage) / 0.38);
+  animation: orb-drift-c 26s ease-in-out infinite alternate;
+}
+
+/* Crisp line art, not blurred like the orbs — this is the part meant to be
+   noticed, if only peripherally. No [data-preset] rule below means no icon:
+   the default (host dashboard, marketing pages) stays undecorated. */
+.atmosphere .motif {
+  position: absolute;
+  bottom: -6%;
+  right: -6%;
+  width: 30vw;
+  height: 30vw;
+  max-width: 22rem;
+  max-height: 22rem;
+  opacity: 0.1;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+/* Wedding — interlocking rings. */
+[data-preset="classic"] .atmosphere .motif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Ccircle cx='45' cy='60' r='28' fill='none' stroke='%23FF5440' stroke-width='4'/%3E%3Ccircle cx='75' cy='60' r='28' fill='none' stroke='%23FF5440' stroke-width='4'/%3E%3C/svg%3E");
+}
+
+/* Game Night — a die, five pips up. */
+[data-preset="game_night"] .atmosphere .motif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect x='20' y='20' width='80' height='80' rx='16' fill='none' stroke='%23487AFF' stroke-width='4'/%3E%3Ccircle cx='40' cy='40' r='6' fill='%23487AFF'/%3E%3Ccircle cx='80' cy='40' r='6' fill='%23487AFF'/%3E%3Ccircle cx='60' cy='60' r='6' fill='%23487AFF'/%3E%3Ccircle cx='40' cy='80' r='6' fill='%23487AFF'/%3E%3Ccircle cx='80' cy='80' r='6' fill='%23487AFF'/%3E%3C/svg%3E");
+}
+
+/* Birthday — a balloon on a string. */
+[data-preset="birthday"] .atmosphere .motif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cellipse cx='60' cy='45' rx='30' ry='36' fill='none' stroke='%23E6286E' stroke-width='4'/%3E%3Cpath d='M60 81 L60 100' stroke='%23E6286E' stroke-width='3' fill='none'/%3E%3Cpath d='M55 100 Q60 108 65 100' stroke='%23E6286E' stroke-width='3' fill='none'/%3E%3C/svg%3E");
+}
+
+/* Bachelorette — a disco ball, facets and all. */
+[data-preset="bachelorette"] .atmosphere .motif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Ccircle cx='60' cy='55' r='32' fill='none' stroke='%23F03096' stroke-width='4'/%3E%3Cpath d='M28 55 H92 M60 23 V87 M39 34 L81 76 M81 34 L39 76' stroke='%23F03096' stroke-width='2' opacity='0.6'/%3E%3Cpath d='M60 95 L60 108 M50 108 H70' stroke='%23F03096' stroke-width='3'/%3E%3C/svg%3E");
+}
+
+/* Bachelor — a tilted card, spade up. */
+[data-preset="bachelor"] .atmosphere .motif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect x='32' y='16' width='56' height='80' rx='8' fill='none' stroke='%23E88430' stroke-width='4' transform='rotate(-8 60 56)'/%3E%3Cpath d='M60 44 C52 52 46 58 46 66 C46 72 52 76 60 76 C68 76 74 72 74 66 C74 58 68 52 60 44 Z' fill='%23E88430' opacity='0.85' transform='rotate(-8 60 56)'/%3E%3C/svg%3E");
+}
+
+/* Reunion — a sun, rays out. */
+[data-preset="reunion"] .atmosphere .motif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Ccircle cx='60' cy='60' r='22' fill='none' stroke='%23C45424' stroke-width='4'/%3E%3Cg stroke='%23C45424' stroke-width='4' stroke-linecap='round'%3E%3Cpath d='M60 18 V6'/%3E%3Cpath d='M60 114 V102'/%3E%3Cpath d='M18 60 H6'/%3E%3Cpath d='M114 60 H102'/%3E%3Cpath d='M31 31 L23 23'/%3E%3Cpath d='M89 89 L97 97'/%3E%3Cpath d='M89 31 L97 23'/%3E%3Cpath d='M31 89 L23 97'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.atmosphere .grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 180px 180px;
+}
+
+@keyframes orb-drift-a {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(8%, 10%) scale(1.12);
+  }
+}
+@keyframes orb-drift-b {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-10%, 6%) scale(1.08);
+  }
+}
+@keyframes orb-drift-c {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(6%, -8%) scale(1.15);
+  }
+}
+
+.live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgb(var(--c-sage));
+  box-shadow: 0 0 0 0 rgb(var(--c-sage) / 0.6);
+  animation: live-ping 1.8s ease-out infinite;
+}
+
+@keyframes live-ping {
+  0% {
+    box-shadow: 0 0 0 0 rgb(var(--c-sage) / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgb(var(--c-sage) / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--c-sage) / 0);
+  }
+}
+
+@keyframes slip-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--c-blush) / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgb(var(--c-blush) / 0);
+  }
+}
+
+.slip-fab {
+  animation: slip-pulse 2.2s ease-out infinite;
+}
+
+/* Host-console guest preview — a laptop-sized stand-in for the phones
+   everyone else is actually holding. */
+.guest-phone {
+  border-radius: 2rem;
+  box-shadow:
+    inset 0 0 0 3px rgb(var(--c-mauve-deep) / 0.18),
+    0 18px 50px rgb(var(--c-shadow) / 0.45);
+}
+
+.guest-phone-notch {
+  margin: 0.55rem auto 0;
+  height: 0.35rem;
+  width: 5.5rem;
+  border-radius: 999px;
+  background: rgb(var(--c-mauve-deep) / 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {

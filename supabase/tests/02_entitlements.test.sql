@@ -131,10 +131,10 @@ select public.test_login('11111111-1111-1111-1111-111111111111');
 
 -- Event A is premium now, so every preset is available.
 select public.set_event_theme(
-  'aaaaaaaa-0000-0000-0000-000000000001', 'neon', null, null, null);
+  'aaaaaaaa-0000-0000-0000-000000000001', 'bachelorette', null, null, null);
 select public.ok(
   (select theme ->> 'preset' from public.events
-    where id = 'aaaaaaaa-0000-0000-0000-000000000001') = 'neon',
+    where id = 'aaaaaaaa-0000-0000-0000-000000000001') = 'bachelorette',
   'a premium host can pick any theme');
 
 select public.set_event_theme(
@@ -181,7 +181,7 @@ do $$
 begin
   begin
     perform public.set_event_theme(
-      'bbbbbbbb-0000-0000-0000-000000000002', 'boho', null, null, null);
+      'bbbbbbbb-0000-0000-0000-000000000002', 'birthday', null, null, null);
     raise exception 'FAIL  a free host applied a premium theme';
   exception when others then
     if sqlerrm like '%tier_lacks_themes%' then
@@ -218,13 +218,20 @@ begin
 end;
 $$;
 
--- Classic stays available to everyone: it is the default, not an upgrade.
+-- Classic and Game Night are the two free looks, not an upgrade.
 select public.set_event_theme(
   'bbbbbbbb-0000-0000-0000-000000000002', 'classic', null, null, null);
 select public.ok(
   (select theme ->> 'preset' from public.events
     where id = 'bbbbbbbb-0000-0000-0000-000000000002') = 'classic',
   'the classic theme stays free for everyone');
+
+select public.set_event_theme(
+  'bbbbbbbb-0000-0000-0000-000000000002', 'game_night', null, null, null);
+select public.ok(
+  (select theme ->> 'preset' from public.events
+    where id = 'bbbbbbbb-0000-0000-0000-000000000002') = 'game_night',
+  'game_night is the second free theme');
 
 -- And a stranger cannot restyle someone else's wedding.
 select public.test_login('33333333-3333-3333-3333-333333333333');

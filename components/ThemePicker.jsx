@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { browserClient } from "../lib/supabase";
 import { useToast } from "./Toast";
+import LogoCropper from "./LogoCropper";
 
 // Presets mirror the [data-preset] blocks in globals.css — the keys must match
 // the list validated in set_event_theme(), or a Host picks a theme, gets no
@@ -15,63 +16,59 @@ const PRESETS = [
   {
     key: "classic",
     label: "Classic",
-    note: "Cream and blush",
-    swatch: ["#FAF5E9", "#D99CA6", "#6B4E5E"],
+    note: "Jewel indigo, hot magenta",
+    swatch: ["#16144E", "#FF2E82", "#FCF8FF"],
     free: true,
-  },
-  {
-    key: "blossom",
-    label: "Blossom",
-    note: "Soft romantic pink",
-    swatch: ["#FDF6F7", "#E88298", "#5C3A48"],
-  },
-  {
-    key: "boho",
-    label: "Boho",
-    note: "Terracotta and sand",
-    swatch: ["#F8F2E9", "#C57C58", "#4A382C"],
-  },
-  {
-    key: "garden",
-    label: "Garden",
-    note: "Olive and sage",
-    swatch: ["#F7F6EE", "#B09E6A", "#3A4A38"],
-  },
-  {
-    key: "midnight",
-    label: "Midnight",
-    note: "Dark mode, cool blue",
-    swatch: ["#161821", "#8194D6", "#E2E6F2"],
     dark: true,
   },
   {
-    key: "noir",
-    label: "Noir",
-    note: "Black tie, ink and gold",
-    swatch: ["#18171A", "#CAB07C", "#F0EDE6"],
+    key: "game_night",
+    label: "Game Night",
+    note: "Teal board, electric blue",
+    swatch: ["#061C40", "#20A8FF", "#F4FCFF"],
+    free: true,
     dark: true,
   },
   {
-    key: "neon",
-    label: "Neon",
-    note: "Late-night dance floor",
-    swatch: ["#0A0A10", "#EC48C8", "#22E2D0"],
+    key: "birthday",
+    label: "Birthday",
+    note: "Candy pink, party fuchsia",
+    swatch: ["#FFA8C4", "#EC1076", "#380824"],
+  },
+  {
+    key: "bachelorette",
+    label: "Bachelorette",
+    note: "Neon magenta dance floor",
+    swatch: ["#30082A", "#FF24B0", "#FFF4FC"],
     dark: true,
+  },
+  {
+    key: "bachelor",
+    label: "Bachelor",
+    note: "Wine room, tangerine",
+    swatch: ["#2A0A1C", "#FF6024", "#FFF4EC"],
+    dark: true,
+  },
+  {
+    key: "reunion",
+    label: "Reunion",
+    note: "Sunset amber, hot coral",
+    swatch: ["#FFA858", "#E8381C", "#30100A"],
   },
 ];
 
 // Suggested accents, stored as the "R G B" triples the CSS variables expect.
 const ACCENTS = [
-  { label: "Blush", accent: "217 156 166", deep: "194 124 136" },
-  { label: "Rose", accent: "232 130 152", deep: "202 88 116" },
-  { label: "Coral", accent: "224 138 118", deep: "196 106 88" },
-  { label: "Terracotta", accent: "197 124 88", deep: "163 92 60" },
-  { label: "Gold", accent: "201 162 75", deep: "168 132 52" },
-  { label: "Sage", accent: "163 177 138", deep: "126 140 102" },
-  { label: "Teal", accent: "94 176 168", deep: "62 140 134" },
-  { label: "Cornflower", accent: "138 158 214", deep: "108 128 188" },
-  { label: "Plum", accent: "168 128 176", deep: "134 96 144" },
-  { label: "Magenta", accent: "218 96 176", deep: "184 66 146" },
+  { label: "Magenta", accent: "255 46 130", deep: "214 20 108" },
+  { label: "Gold", accent: "255 214 48", deep: "220 168 16" },
+  { label: "Fuchsia", accent: "255 36 176", deep: "214 12 140" },
+  { label: "Tangerine", accent: "255 96 36", deep: "214 64 16" },
+  { label: "Aqua", accent: "20 236 196", deep: "8 196 164" },
+  { label: "Sky", accent: "32 168 255", deep: "12 124 230" },
+  { label: "Violet", accent: "168 72 255", deep: "128 40 214" },
+  { label: "Lime", accent: "156 214 48", deep: "116 172 24" },
+  { label: "Coral", accent: "232 56 28", deep: "188 32 16" },
+  { label: "Rose", accent: "236 16 118", deep: "190 8 92" },
 ];
 
 const ERRORS = {
@@ -106,12 +103,13 @@ function darken(channels, amount = 0.82) {
   return [r, g, b].map((c) => Math.round(c * amount)).join(" ");
 }
 
-export default function ThemePicker({ event, tier }) {
+export default function ThemePicker({ event, tier, onChange }) {
   const notify = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [uploading, setUploading] = useState(false);
   const [custom, setCustom] = useState("#d99ca6");
+  const [cropSrc, setCropSrc] = useState(null);
 
   const theme = event.theme || {};
   const canTheme = Boolean(tier?.themes);
@@ -127,7 +125,31 @@ export default function ThemePicker({ event, tier }) {
         p_accent_deep: patch.accentDeep ?? null,
         p_logo_url: patch.logoUrl ?? null,
       });
+
+      // Pre-migration escape hatch: a database that hasn't run
+      // supabase/migrations/0001_multi_event.sql yet only recognises the old
+      // preset names inside set_event_theme() itself, so it raises
+      // unknown_preset for every new one. Write the preset straight to the
+      // event's theme column instead — RLS still requires event ownership,
+      // it just skips the RPC's own tier re-check for this one case. Once the
+      // migration runs, the RPC accepts the new names directly and this
+      // branch stops firing.
+      if (error?.message?.includes("unknown_preset") && "preset" in patch) {
+        const { error: fallbackError } = await supabase
+          .from("events")
+          .update({ theme: { ...theme, preset: patch.preset } })
+          .eq("id", event.id);
+        if (fallbackError) {
+          return notify(friendly(fallbackError.message), { tone: "error" });
+        }
+        onChange?.(patch);
+        notify(successMessage, { tone: "success" });
+        router.refresh();
+        return;
+      }
+
       if (error) return notify(friendly(error.message), { tone: "error" });
+      onChange?.(patch);
       notify(successMessage, { tone: "success" });
       router.refresh();
     });
@@ -141,21 +163,34 @@ export default function ThemePicker({ event, tier }) {
     );
   };
 
-  const upload = async (file) => {
+  const closeCrop = () => {
+    if (cropSrc?.startsWith("blob:")) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+  };
+
+  const pickFile = (file, input) => {
     if (!file) return;
+    if (!file.type.startsWith("image/") && file.type !== "image/svg+xml") {
+      return notify("Use a PNG, JPG, WebP or SVG.", { tone: "error" });
+    }
     if (file.size > 2 * 1024 * 1024) {
       return notify("That image is over 2MB — try a smaller one.", {
         tone: "error",
       });
     }
+    if (cropSrc?.startsWith("blob:")) URL.revokeObjectURL(cropSrc);
+    setCropSrc(URL.createObjectURL(file));
+    if (input) input.value = "";
+  };
+
+  const commitLogo = async (blob) => {
     setUploading(true);
     try {
-      const ext = (file.name.split(".").pop() || "png").toLowerCase();
-      // Timestamped filename so a replacement busts any CDN cache.
-      const path = `${event.id}/logo-${Date.now()}.${ext}`;
+      const file = new File([blob], "logo.png", { type: "image/png" });
+      const path = `${event.id}/logo-${Date.now()}.png`;
       const { error } = await supabase.storage
         .from("event-logos")
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, file, { upsert: true, contentType: "image/png" });
       if (error) throw error;
 
       const {
@@ -163,8 +198,12 @@ export default function ThemePicker({ event, tier }) {
       } = supabase.storage.from("event-logos").getPublicUrl(path);
 
       save({ logoUrl: publicUrl }, "Logo updated.");
+      closeCrop();
     } catch (err) {
-      notify(friendly(err?.message), { tone: "error" });
+      notify(
+        friendly(err?.message) || "Couldn't upload that image. Try again.",
+        { tone: "error" }
+      );
     } finally {
       setUploading(false);
     }
@@ -305,25 +344,43 @@ export default function ThemePicker({ event, tier }) {
             type="file"
             accept="image/png,image/jpeg,image/webp,image/svg+xml"
             disabled={!canBrand || uploading || pending}
-            onChange={(e) => upload(e.target.files?.[0])}
+            onChange={(e) => pickFile(e.target.files?.[0], e.target)}
             className="w-full text-xs text-mauve file:mr-3 file:rounded-xl file:border-0 file:bg-mauve-deep file:px-3 file:py-2 file:text-xs file:font-semibold file:text-cream-card disabled:opacity-40"
           />
           <p className="mt-1 text-[11px] text-mauve/60">
-            PNG, JPG, WebP or SVG. Up to 2MB. Shown as a circle.
+            PNG, JPG, WebP or SVG. Up to 2MB. You can zoom and crop it first.
           </p>
         </div>
         {theme.logoUrl && canBrand && (
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => save({ logoUrl: "" }, "Logo removed.")}
-            className="shrink-0 text-xs text-blush-deep underline underline-offset-2"
-          >
-            Remove
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <button
+              type="button"
+              disabled={pending || uploading}
+              onClick={() => setCropSrc(theme.logoUrl)}
+              className="text-xs text-mauve underline underline-offset-2 hover:text-mauve-deep"
+            >
+              Adjust
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => save({ logoUrl: "" }, "Logo removed.")}
+              className="text-xs text-blush-deep underline underline-offset-2"
+            >
+              Remove
+            </button>
+          </div>
         )}
       </div>
-      {uploading && <p className="mt-2 text-xs text-mauve/70">Uploading…</p>}
+      {uploading && <p className="mt-2 text-xs text-mauve/70">Saving…</p>}
+
+      {cropSrc && (
+        <LogoCropper
+          src={cropSrc}
+          onCancel={closeCrop}
+          onApply={commitLogo}
+        />
+      )}
     </section>
   );
 }

@@ -5,10 +5,10 @@ into **Authentication → Email Templates** in the dashboard.
 
 Two things matter more than the styling:
 
-1. **Lead with the code, not the link.** A guest at a reception is on their phone
+1. **Lead with the code, not the link.** A guest at an event is on their phone
    with one hand. `{{ .Token }}` at the top, large, is the whole email.
 2. **Say what it's for.** "Someone is asking me to sign in" is a phishing
-   feeling; "sign in to play at the wedding" is not.
+   feeling; "sign in to play at the event" is not.
 
 Inline CSS only — email clients strip `<style>` blocks and have no CSS variables.
 
@@ -22,7 +22,7 @@ Inline CSS only — email clients strip `<style>` blocks and have no CSS variabl
 <div style="font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;background:#faf5e9;padding:32px 16px;">
   <div style="max-width:420px;margin:0 auto;background:#fffdf7;border-radius:20px;padding:32px 28px;text-align:center;border:1px solid rgba(107,78,94,0.1);">
     <p style="margin:0;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#9b8aa0;font-weight:600;">
-      Wedding Bets
+      Let's Bet
     </p>
     <h1 style="margin:12px 0 4px;font-family:Georgia,serif;font-size:26px;font-weight:600;color:#6b4e5e;">
       Your sign-in code
@@ -59,7 +59,7 @@ Inline CSS only — email clients strip `<style>` blocks and have no CSS variabl
 <div style="font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;background:#faf5e9;padding:32px 16px;">
   <div style="max-width:420px;margin:0 auto;background:#fffdf7;border-radius:20px;padding:32px 28px;text-align:center;border:1px solid rgba(107,78,94,0.1);">
     <p style="margin:0;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#9b8aa0;font-weight:600;">
-      Wedding Bets
+      Let's Bet
     </p>
     <h1 style="margin:12px 0 8px;font-family:Georgia,serif;font-size:26px;font-weight:600;color:#6b4e5e;">
       Confirm your email
@@ -90,7 +90,7 @@ Inline CSS only — email clients strip `<style>` blocks and have no CSS variabl
 <div style="font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;background:#faf5e9;padding:32px 16px;">
   <div style="max-width:420px;margin:0 auto;background:#fffdf7;border-radius:20px;padding:32px 28px;text-align:center;border:1px solid rgba(107,78,94,0.1);">
     <p style="margin:0;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:#9b8aa0;font-weight:600;">
-      Wedding Bets
+      Let's Bet
     </p>
     <h1 style="margin:12px 0 8px;font-family:Georgia,serif;font-size:26px;font-weight:600;color:#6b4e5e;">
       Reset your password
@@ -116,7 +116,7 @@ Inline CSS only — email clients strip `<style>` blocks and have no CSS variabl
 ## Before a real event
 
 **Set a custom SMTP sender.** Supabase's built-in email service is rate limited
-to a handful of messages per hour and is meant for development. A wedding where
+to a handful of messages per hour and is meant for development. An event where
 150 guests all request a code at once hits that wall within seconds, and those
 guests simply cannot get in.
 
