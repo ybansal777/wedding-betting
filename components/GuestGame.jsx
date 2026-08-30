@@ -10,6 +10,7 @@ import Leaderboard from "./Leaderboard";
 import { useToast } from "./Toast";
 import { placeBets, renameGuest } from "../lib/actions";
 import { track, EVENTS } from "../lib/analytics";
+import { isLiveBetting } from "../lib/bettingModes";
 
 // Jittered polling.
 //
@@ -20,19 +21,45 @@ import { track, EVENTS } from "../lib/analytics";
 const LEADERBOARD_MS = 30000;
 const jitter = (ms) => ms * (0.75 + Math.random() * 0.5);
 
-export default function GuestGame({ event, guest, questions, initialBets }) {
+export default function GuestGame({
+  event,
+  guest,
+  questions,
+  initialBets,
+  initialLeaderboard = [],
+  offline = false,
+  embedded = false,
+}) {
   const notify = useToast();
   const router = useRouter();
 
   const [myBets, setMyBets] = useState(initialBets);
-  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboard, setLeaderboard] = useState(initialLeaderboard);
   const [staged, setStaged] = useState({});
   const [renaming, setRenaming] = useState(false);
+  const [localGuest, setLocalGuest] = useState(guest);
   const [newName, setNewName] = useState(guest.display_name);
   const timer = useRef(null);
 
+  const displayName = offline ? localGuest.display_name : guest.display_name;
+
   const rename = async () => {
-    const res = await renameGuest(event.slug, guest.id, newName);
+    const next = newName.trim();
+    if (!next) return;
+    if (offline) {
+      setLocalGuest((g) => ({ ...g, display_name: next }));
+      setLeaderboard((rows) =>
+        rows.map((r) =>
+          r.name.toLowerCase() === displayName.trim().toLowerCase()
+            ? { ...r, name: next }
+            : r
+        )
+      );
+      setRenaming(false);
+      notify("Name updated.", { tone: "success" });
+      return;
+    }
+    const res = await renameGuest(event.slug, guest.id, next);
     if (!res.ok) return notify(res.error, { tone: "error" });
     setRenaming(false);
     notify("Name updated.", { tone: "success" });
@@ -67,6 +94,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
   }, [event.id]);
 
   useEffect(() => {
+    if (offline) return;
     fetchLeaderboard();
     const schedule = () => {
       timer.current = setTimeout(() => {
@@ -84,7 +112,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
       clearTimeout(timer.current);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [fetchLeaderboard]);
+  }, [fetchLeaderboard, offline]);
 
   // ---------------------------------------------------------------- derived
   const winnerById = useMemo(() => {
@@ -103,26 +131,43 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
 
   // The authoritative balance is the guest row — the database maintains it
   // incrementally, so the client never recomputes it from bet history.
-  const confirmedBalance = guest.balance;
+  const confirmedBalance = offline ? localGuest.balance : guest.balance;
   const stagedTotal = useMemo(
     () => Object.values(staged).reduce((s, v) => s + (v.wager || 0), 0),
     [staged]
   );
   const availableBalance = confirmedBalance - stagedTotal;
 
-  const maxWagerFor = (qid) =>
-    Math.max(0, confirmedBalance - (stagedTotal - (staged[qid]?.wager || 0)));
+  const liveMode = isLiveBetting(event.betting_mode);
+
+  const maxWagerFor = (qid) => {
+    const leftover = Math.max(
+      0,
+      confirmedBalance - (stagedTotal - (staged[qid]?.wager || 0))
+    );
+    const cap = questions.find((q) => q.id === qid)?.max_wager;
+    if (cap != null && Number.isFinite(Number(cap))) {
+      return Math.max(0, Math.min(leftover, Math.floor(Number(cap))));
+    }
+    return leftover;
+  };
+
+  const pricedQuestion = (q) => liveMode || q?.bet_type === "line";
 
   const slipItems = useMemo(
     () =>
-      Object.entries(staged).map(([questionId, s]) => ({
-        questionId,
-        prompt: questions.find((q) => q.id === questionId)?.prompt || "",
-        label: s.label,
-        odds: s.odds,
-        wager: s.wager,
-      })),
-    [staged, questions]
+      Object.entries(staged).map(([questionId, s]) => {
+        const q = questions.find((row) => row.id === questionId);
+        return {
+          questionId,
+          prompt: q?.prompt || "",
+          label: s.label,
+          odds: s.odds,
+          wager: s.wager,
+          showOdds: pricedQuestion(q),
+        };
+      }),
+    [staged, questions, liveMode]
   );
 
   // ---------------------------------------------------------------- staging
@@ -174,6 +219,40 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
     }));
     if (slip.length === 0) return false;
 
+    if (offline) {
+      const placedBets = slip.map((s) => ({
+        id: `offline-${s.questionId}`,
+        question_id: s.questionId,
+        pick: s.optionId,
+        pick_label: s.label,
+        wager: s.wager,
+        odds_at_bet: staged[s.questionId]?.odds,
+      }));
+      const total = slip.reduce((n, s) => n + s.wager, 0);
+      setMyBets((prev) => [...prev, ...placedBets]);
+      setLocalGuest((g) => ({ ...g, balance: g.balance - total }));
+      setLeaderboard((rows) => {
+        const mine = rows.find(
+          (r) => r.name.toLowerCase() === displayName.trim().toLowerCase()
+        );
+        const nextBalance = (mine?.balance ?? confirmedBalance) - total;
+        const others = rows.filter(
+          (r) => r.name.toLowerCase() !== displayName.trim().toLowerCase()
+        );
+        return [
+          ...others,
+          {
+            name: displayName,
+            balance: nextBalance,
+            bet_count: (mine?.bet_count || 0) + placedBets.length,
+          },
+        ].sort((a, b) => b.balance - a.balance);
+      });
+      setStaged({});
+      notify("Bets placed — good luck!", { tone: "success" });
+      return true;
+    }
+
     const res = await placeBets(event.id, event.slug, slip);
     if (!res.ok) {
       notify(res.error, { tone: "error" });
@@ -208,7 +287,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
   return (
     <>
       <BalanceCard
-        displayName={guest.display_name}
+        displayName={displayName}
         balance={availableBalance}
         bankroll={event.starting_bankroll}
         pendingCount={pendingCount}
@@ -236,7 +315,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
               type="button"
               onClick={() => {
                 setRenaming(false);
-                setNewName(guest.display_name);
+                setNewName(displayName);
               }}
               className="btn-ghost flex-1 py-2.5 text-sm"
             >
@@ -262,7 +341,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
           <p className="mt-1 text-sm text-mauve/80">
             {event.status === "closed"
               ? "That's a wrap. Thanks for playing!"
-              : "Hang tight — the couple hasn't started the game."}
+              : "Hang tight — the host hasn't started the game."}
           </p>
           {event.status === "closed" && (
             <Link
@@ -281,7 +360,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
             No bets are open yet
           </p>
           <p className="mt-1 text-sm text-mauve/80">
-            Check back soon — the couple is cooking up some questions.
+            Check back soon — the host is cooking up some questions.
           </p>
         </section>
       ) : (
@@ -299,6 +378,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
               staged={staged[q.id] || null}
               maxWager={maxWagerFor(q.id)}
               nameReady={bettingOpen}
+              showOdds={pricedQuestion(q)}
               onStage={stageBet}
               onWager={setStageWager}
               onClear={unstageBet}
@@ -308,11 +388,11 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
         </div>
       )}
 
-      <Leaderboard entries={leaderboard} currentName={guest.display_name} />
+      <Leaderboard entries={leaderboard} currentName={displayName} />
 
       <footer className="mt-auto pt-6 text-center">
         <div className="scallop-divider mb-4">
-          <span className="text-xs text-blush">✦</span>
+          <span className="text-xs text-gold">◆</span>
         </div>
         <p className="text-xs text-mauve/70">fake money · real bragging rights</p>
       </footer>
@@ -322,6 +402,7 @@ export default function GuestGame({ event, guest, questions, initialBets }) {
         total={stagedTotal}
         onRemove={unstageBet}
         onPlace={place}
+        embedded={embedded}
       />
     </>
   );

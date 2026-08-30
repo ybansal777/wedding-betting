@@ -1,5 +1,5 @@
 -- =============================================================================
--- Wedding Bets — complete schema for a FRESH Supabase project.
+-- Let's Bet — complete schema for a FRESH Supabase project.
 --
 -- Run this once, in a NEW project's SQL editor. It is the whole database: no
 -- migration chain to replay, nothing that touches or depends on an existing
@@ -18,9 +18,9 @@
 --
 --   3. BALANCES ARE STORED, NOT DERIVED. event_guests.balance is maintained
 --      incrementally. Recomputing a leaderboard by re-joining every bet on every
---      poll is fine for one wedding and ruinous across concurrent events.
+--      poll is fine for one event and ruinous across concurrent events.
 --
--- Verify with ./scripts/test-rls.sh — 48 assertions, throwaway container.
+-- Verify with ./scripts/test-rls.sh — 82 assertions, throwaway container.
 -- =============================================================================
 
 create extension if not exists citext;
@@ -72,8 +72,11 @@ create table if not exists public.events (
   owner_id          uuid not null references public.profiles (id) on delete cascade,
   slug              citext not null unique,
   title             text not null,
-  partner_a         text,
-  partner_b         text,
+  event_type        text not null default 'other'
+                      check (event_type in
+                        ('wedding', 'bachelor_bachelorette', 'birthday',
+                         'family_reunion', 'other')),
+  subtitle          text,
   event_date        date,
   starting_bankroll int  not null default 100
                       check (starting_bankroll between 10 and 1000000),
@@ -87,6 +90,10 @@ create table if not exists public.events (
   status            text not null default 'draft'
                       check (status in ('draft', 'live', 'closed')),
   published         boolean not null default false,
+  -- 'casual': even-money multiple choice, optional per-question max wager.
+  -- 'live': host-set odds on multiple choice, plus Over/Under lines.
+  betting_mode      text not null default 'casual'
+                      check (betting_mode in ('casual', 'live')),
   stripe_session_id text,
   created_at        timestamptz not null default now()
 );
@@ -94,15 +101,23 @@ create table if not exists public.events (
 create index if not exists events_owner_idx on public.events (owner_id, created_at desc);
 
 create table if not exists public.questions (
-  id         uuid primary key default gen_random_uuid(),
-  event_id   uuid not null references public.events (id) on delete cascade,
-  prompt     text not null,
-  -- [{ id, label, odds }] — American odds, host-authored, fixed at bet time.
-  options    jsonb not null default '[]'::jsonb,
-  winner     text,                      -- option id, null until settled
-  settled_at timestamptz,
-  sort       int  not null default 0,
-  created_at timestamptz not null default now()
+  id          uuid primary key default gen_random_uuid(),
+  event_id    uuid not null references public.events (id) on delete cascade,
+  prompt      text not null,
+  -- 'guess': host authors arbitrary options. 'line': options are always
+  -- synthesized as exactly [{id:'over',...}, {id:'under',...}] from
+  -- line_value/odds below — see settle_question() and lib/actions.js.
+  bet_type    text not null default 'guess' check (bet_type in ('guess', 'line')),
+  -- [{ id, label, odds }] — American odds, fixed at bet time.
+  options     jsonb not null default '[]'::jsonb,
+  line_value  numeric,                  -- the baseline, 'line' questions only
+  actual_value numeric,                 -- host-entered real result, 'line' only
+  winner      text,                     -- option id ('over'/'under'/'push' for line), null until settled
+  -- Casual-mode cap on a single question. Null means no cap beyond bankroll.
+  max_wager   int check (max_wager is null or max_wager >= 1),
+  settled_at  timestamptz,
+  sort        int  not null default 0,
+  created_at  timestamptz not null default now()
 );
 
 create index if not exists questions_event_idx on public.questions (event_id, sort, created_at);
@@ -160,7 +175,7 @@ create table if not exists public.purchases (
 create index if not exists purchases_event_idx on public.purchases (event_id);
 
 -- Funnel instrumentation. First-party and minimal — no third-party pixel on a
--- page wedding guests load, and no personal data beyond an opaque browser id.
+-- page event guests load, and no personal data beyond an opaque browser id.
 -- Without this the PRD's kill criterion is a promise nobody can measure.
 create table if not exists public.analytics_events (
   id         bigserial primary key,
@@ -466,6 +481,9 @@ begin
      where id = (v_item ->> 'question_id')::uuid and event_id = p_event_id;
     if not found then raise exception 'question_not_found'; end if;
     if v_question.winner is not null then raise exception 'question_settled'; end if;
+    if v_question.max_wager is not null and v_wager > v_question.max_wager then
+      raise exception 'wager_too_high';
+    end if;
 
     select opt ->> 'odds' into v_odds
       from jsonb_array_elements(v_question.options) as opt
@@ -511,8 +529,17 @@ $$;
 
 -- Declare (or clear) a winner and pay out, in one transaction. Host only.
 -- Re-settling reverses the previous payout first, so a mis-tap is recoverable —
--- at a wedding this needs an undo, not a confirm dialog.
-create or replace function public.settle_question(p_question_id uuid, p_winner text)
+-- at an event this needs an undo, not a confirm dialog.
+--
+-- For 'line' questions, p_winner is ignored and the winner ('over', 'under', or
+-- a tied 'push') is always computed here from p_actual_value — the host reports
+-- a real-world number, never a pick, so there's nothing for a tampered client
+-- payload to lie about.
+create or replace function public.settle_question(
+  p_question_id  uuid,
+  p_winner       text,
+  p_actual_value numeric default null
+)
   returns void
   language plpgsql
   security definer
@@ -520,6 +547,7 @@ create or replace function public.settle_question(p_question_id uuid, p_winner t
 as $$
 declare
   v_question public.questions;
+  v_winner   text;
 begin
   select * into v_question from public.questions where id = p_question_id;
   if not found then raise exception 'question_not_found'; end if;
@@ -537,6 +565,47 @@ begin
 
     update public.bets set payout = null, settled_at = null
      where question_id = p_question_id;
+  end if;
+
+  if v_question.bet_type = 'line' then
+    if p_actual_value is null then
+      update public.questions
+         set winner = null, actual_value = null, settled_at = null
+       where id = p_question_id;
+      return;
+    end if;
+
+    v_winner := case
+                  when p_actual_value > v_question.line_value then 'over'
+                  when p_actual_value < v_question.line_value then 'under'
+                  else 'push'
+                end;
+
+    update public.questions
+       set winner = v_winner, actual_value = p_actual_value, settled_at = now()
+     where id = p_question_id;
+
+    -- A push refunds the stake to every bettor on the question, win or lose —
+    -- net zero against the deduction taken at bet time. Otherwise this is the
+    -- same odds-multiplier payout as a 'guess' question below.
+    update public.bets
+       set payout = case
+                      when v_winner = 'push' then wager
+                      when pick = v_winner
+                        then round(wager * public.odds_multiplier(odds_at_bet))::int
+                      else 0
+                    end,
+           settled_at = now()
+     where question_id = p_question_id;
+
+    update public.event_guests g
+       set balance = g.balance + b.payout
+      from public.bets b
+     where b.question_id = p_question_id
+       and b.guest_id = g.id
+       and b.payout > 0;
+
+    return;
   end if;
 
   if p_winner is null then
@@ -601,7 +670,7 @@ as $$
    limit 500;
 $$;
 
--- Wipe a rehearsal. A wedding gets one attempt, so a Host needs to practise the
+-- Wipe a rehearsal. An event gets one attempt, so a Host needs to practice the
 -- console and then clear the evidence. Refuses on a live event.
 create or replace function public.reset_event(p_event_id uuid)
   returns void
@@ -637,7 +706,7 @@ $$;
 -- =============================================================================
 
 -- Called by the Stripe webhook with the service-role key. Idempotent on the
--- session id: Stripe retries deliveries, and a couple must never be charged
+-- session id: Stripe retries deliveries, and a host must never be charged
 -- twice or have their tier applied twice.
 create or replace function public.apply_purchase(
   p_event_id       uuid,
@@ -716,12 +785,14 @@ begin
 
   if p_preset is not null then
     if p_preset not in (
-      'classic', 'midnight', 'garden', 'boho', 'neon', 'noir', 'blossom'
+      'classic', 'game_night', 'birthday', 'bachelorette', 'bachelor', 'reunion'
     ) then
       raise exception 'unknown_preset';
     end if;
-    -- `classic` is the default look, not an upgrade, so it is always allowed.
-    if p_preset <> 'classic' and not coalesce(v_tier.themes, false) then
+    -- `classic` and `game_night` are the two free looks, not an upgrade, so
+    -- they're always allowed. The other four require the themes entitlement.
+    if p_preset not in ('classic', 'game_night')
+       and not coalesce(v_tier.themes, false) then
       raise exception 'tier_lacks_themes';
     end if;
     v_theme := v_theme || jsonb_build_object('preset', p_preset);
@@ -796,9 +867,10 @@ begin
   if v_slug !~ '^[a-z0-9]+(-[a-z0-9]+)*$' then
     raise exception 'slug_bad_format';
   end if;
-  -- These would shadow real paths under /e/ or read as system pages.
+  -- These would shadow real paths or read as system pages.
   if v_slug in ('api', 'auth', 'login', 'dashboard', 'account', 'admin',
-                'privacy', 'terms', 'new', 'join', 'recap', 'e') then
+                'privacy', 'terms', 'new', 'join', 'recap', 'e', 'dev',
+                'reset-password') then
     raise exception 'slug_reserved';
   end if;
 
@@ -929,9 +1001,9 @@ end;
 $$;
 
 -- Cheap on purpose: the health probe must not be the thing that falls over when
--- the database is struggling. Reports live_events because during the season the
--- number that matters is not "is it up" but "how many weddings are mid-
--- reception right now" — that is the blast radius of an incident.
+-- the database is struggling. Reports live_events because during peak season the
+-- number that matters is not "is it up" but "how many events are live right
+-- now" — that is the blast radius of an incident.
 create or replace function public.health_check()
   returns jsonb
   language sql
@@ -948,13 +1020,13 @@ $$;
 -- =============================================================================
 -- RETENTION
 --
--- The privacy notice promises event data is deleted 12 months after the wedding.
+-- The privacy notice promises event data is deleted 12 months after the event.
 -- A promise in published text with no mechanism behind it is worse than no
 -- promise, so this is the mechanism. Called on a schedule by /api/cron/purge.
 --
 -- Deleting the event cascades to questions, guests, bets, purchases and
 -- analytics rows. Guest accounts themselves are NOT deleted here — a guest may
--- be playing at another wedding, and their auth record is theirs to remove from
+-- be playing at another event, and their auth record is theirs to remove from
 -- the account page.
 -- =============================================================================
 create or replace function public.purge_expired_events(p_months int default 12)
@@ -1116,7 +1188,7 @@ revoke all on function public.enforce_question_limit()                  from pub
 revoke all on function public.guard_entitlements()                      from public;
 revoke all on function public.join_event(citext, text)                  from public;
 revoke all on function public.place_bets(uuid, jsonb)                   from public;
-revoke all on function public.settle_question(uuid, text)               from public;
+revoke all on function public.settle_question(uuid, text, numeric)      from public;
 revoke all on function public.public_leaderboard(uuid)                  from public;
 revoke all on function public.reset_event(uuid)                         from public;
 revoke all on function public.apply_purchase(uuid, text, text, text, int) from public;
@@ -1144,7 +1216,7 @@ grant execute on function public.is_event_guest(uuid) to anon, authenticated;
 -- Everything that mutates requires a session.
 grant execute on function public.join_event(citext, text)     to authenticated;
 grant execute on function public.place_bets(uuid, jsonb)      to authenticated;
-grant execute on function public.settle_question(uuid, text)  to authenticated;
+grant execute on function public.settle_question(uuid, text, numeric) to authenticated;
 grant execute on function public.reset_event(uuid)            to authenticated;
 grant execute on function public.set_event_slug(uuid, citext) to authenticated;
 grant execute on function public.export_event_results(uuid)   to authenticated;

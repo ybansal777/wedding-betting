@@ -2,11 +2,7 @@
 
 import { formatMoney } from "../lib/odds";
 
-// Identity + live balance.
-//
-// The original version doubled as the login: a guest typed a name and pressed
-// Enter. Identity now comes from a real authenticated guest row, so this is
-// purely a display of who you are and what you're holding.
+// Identity + live balance. Reads like a chip stack, not a bank statement.
 export default function BalanceCard({
   displayName,
   balance,
@@ -17,13 +13,17 @@ export default function BalanceCard({
   const pct = Math.max(0, Math.min(100, (balance / bankroll) * 100));
   const up = balance > bankroll;
   const down = balance < bankroll;
-  const barColor = up ? "bg-sage" : down ? "bg-blush-deep" : "bg-mauve";
+  const barColor = up ? "bg-sage" : down ? "bg-blush" : "bg-gold";
 
   return (
-    <section className="card p-5 animate-slide-up">
+    <section className="card relative overflow-hidden p-5 animate-slide-up">
+      <div
+        className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-gold/15 blur-2xl"
+        aria-hidden="true"
+      />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <span className="eyebrow text-blush-deep">Playing as</span>
+          <span className="eyebrow text-blush">Playing as</span>
           <p className="truncate font-serif text-2xl leading-tight text-mauve-deep">
             {displayName}
           </p>
@@ -40,18 +40,18 @@ export default function BalanceCard({
       </div>
 
       <div className="mt-5 flex items-end justify-between">
-        <span className="eyebrow text-mauve">Total Balance</span>
+        <span className="eyebrow text-mauve">Bankroll</span>
         {pendingCount > 0 && (
-          <span className="text-xs text-mauve/70">
-            {pendingCount} bet{pendingCount > 1 ? "s" : ""} riding
+          <span className="rounded-full bg-blush/15 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-blush">
+            {pendingCount} riding
           </span>
         )}
       </div>
 
       <div className="mt-1">
         <span
-          className={`font-serif text-5xl font-semibold ${
-            up ? "text-sage-deep" : down ? "text-blush-deep" : "text-mauve-deep"
+          className={`font-serif text-5xl font-extrabold tabular tracking-tight ${
+            up ? "text-sage" : down ? "text-blush" : "text-gold"
           }`}
         >
           {formatMoney(balance)}

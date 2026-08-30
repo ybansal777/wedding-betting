@@ -41,7 +41,7 @@ export default async function EventConsolePage({ params }) {
   const qr = event.published && shareUrl ? await qrDataUrl(shareUrl) : null;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 pb-24 pt-8">
+    <main className="mx-auto max-w-[90rem] px-4 pb-16 pt-6 lg:px-6">
       <Link
         href="/dashboard"
         className="text-sm text-mauve underline underline-offset-4 hover:text-mauve-deep"

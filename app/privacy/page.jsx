@@ -3,10 +3,10 @@ import Link from "next/link";
 export const metadata = {
   title: "Privacy",
   description:
-    "What Wedding Bets stores about hosts and guests, why, and how to delete it.",
+    "What Let's Bet stores about hosts and guests, why, and how to delete it.",
 };
 
-// Written to be read, not to be survived. A guest at a reception who taps this
+// Written to be read, not to be survived. A guest at an event who taps this
 // deserves a straight answer in the ten seconds they'll give it.
 //
 // NOT LEGAL ADVICE — this is an honest description of what the code actually
@@ -50,7 +50,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong>The display name you chose.</strong> Other guests at that
-              wedding can see it on the leaderboard, along with your play-money
+              event can see it on the leaderboard, along with your play-money
               balance. Choose accordingly.
             </li>
             <li>
@@ -64,7 +64,7 @@ export default function PrivacyPage() {
             </li>
           </ul>
           <p className="mt-3">
-            The couple hosting your wedding can see your display name, balance,
+            The host of your event can see your display name, balance,
             and bets. They cannot see your email address or phone number.
           </p>
         </section>
@@ -85,8 +85,8 @@ export default function PrivacyPage() {
             How long we keep it
           </h2>
           <p className="mt-2">
-            Event data is kept for <strong>12 months</strong> after the wedding
-            date so couples can revisit the results, then deleted. You can delete
+            Event data is kept for <strong>12 months</strong> after the event
+            date so hosts can revisit the results, then deleted. You can delete
             yours sooner at any time.
           </p>
         </section>

@@ -4,9 +4,9 @@ import { useEffect } from "react";
 
 // The most important error boundary in the app.
 //
-// This is the one a guest hits, on their phone, at a reception, while the
-// couple is watching. Without it Next.js shows its own error page — a stark
-// developer screen that reads as "the couple's app is broken".
+// This is the one a guest hits, on their phone, at the event, while the host
+// is watching. Without it Next.js shows its own error page — a stark
+// developer screen that reads as "the host's app is broken".
 //
 // It deliberately does not explain what went wrong. A guest cannot act on a
 // stack trace; they can act on "try again".
@@ -30,7 +30,7 @@ export default function EventError({ error, reset }) {
         </p>
 
         <div className="scallop-divider my-5">
-          <span className="text-xs text-blush">✦</span>
+          <span className="text-xs text-gold">◆</span>
         </div>
 
         <button onClick={reset} className="btn-primary w-full py-3">

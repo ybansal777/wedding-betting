@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useToast } from "./Toast";
 
-// Deletion is irreversible and cascades across other people's weddings, so it
+// Deletion is irreversible and cascades across other people's events, so it
 // asks for the word DELETE rather than a yes/no dialog. That is deliberate
-// friction — a mis-tap here destroys a couple's event.
+// friction — a mis-tap here destroys a host's event.
 export default function DeleteAccount({ eventCount, guestCount }) {
   const notify = useToast();
   const [open, setOpen] = useState(false);
@@ -41,7 +41,7 @@ export default function DeleteAccount({ eventCount, guestCount }) {
         This permanently removes your sign-in, {eventCount}{" "}
         {eventCount === 1 ? "event you host" : "events you host"} (including all
         their questions, guests and bets), and your player profile at{" "}
-        {guestCount} {guestCount === 1 ? "wedding" : "weddings"}. It cannot be
+        {guestCount} {guestCount === 1 ? "event" : "events"}. It cannot be
         undone and there is no backup to restore from.
       </p>
 
@@ -81,7 +81,7 @@ export default function DeleteAccount({ eventCount, guestCount }) {
               type="button"
               onClick={run}
               disabled={busy || confirm !== "DELETE"}
-              className="flex-1 rounded-2xl border-2 border-blush-deep bg-blush-deep py-3 font-semibold text-cream-card transition hover:opacity-90 disabled:opacity-40"
+              className="flex-1 rounded-2xl border-2 border-blush-deep bg-blush-deep py-3 font-semibold text-foam transition hover:opacity-90 disabled:opacity-40"
             >
               {busy ? "Deleting…" : "Delete forever"}
             </button>

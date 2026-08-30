@@ -27,7 +27,7 @@ export default function RootError({ error, reset }) {
         )}
 
         <div className="scallop-divider my-5">
-          <span className="text-xs text-blush">✦</span>
+          <span className="text-xs text-gold">◆</span>
         </div>
 
         <button onClick={reset} className="btn-primary w-full py-3">

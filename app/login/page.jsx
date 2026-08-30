@@ -8,6 +8,14 @@ export default function LoginPage({ searchParams }) {
 
   return (
     <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col justify-center gap-5 px-4 py-10">
+      <p className="text-center">
+        <Link
+          href="/"
+          className="font-serif text-2xl tracking-tight text-mauve-deep"
+        >
+          Let&apos;s Bet
+        </Link>
+      </p>
       <AuthPanel
         mode="host"
         redirectTo={next}

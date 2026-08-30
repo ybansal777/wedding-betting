@@ -3,8 +3,8 @@ import { serviceClient } from "../../../lib/supabase";
 
 // Uptime probe. Point a monitor at this and alert on non-200.
 //
-// It reports live_events on purpose: during the season the number that matters
-// is not "is the site up" but "how many weddings are mid-reception right now",
+// It reports live_events on purpose: during peak season the number that
+// matters is not "is the site up" but "how many events are live right now",
 // which is the blast radius of an incident at this exact moment. The same alert
 // means something very different at 7pm on a Saturday than at 4am on a Tuesday.
 export const dynamic = "force-dynamic";

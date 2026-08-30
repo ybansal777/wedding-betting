@@ -3,7 +3,7 @@ import Link from "next/link";
 export const metadata = {
   title: "Terms",
   description:
-    "Terms of use for Wedding Bets — a play-money prediction game with no cash prizes.",
+    "Terms of use for Let's Bet — a play-money prediction game with no cash prizes.",
 };
 
 // The "is this gambling" section is the commercially load-bearing part of this
@@ -74,7 +74,7 @@ export default function TermsPage() {
             Nothing recurs and there is nothing to cancel.
           </p>
           <p className="mt-2">
-            <strong>Refunds:</strong> if the product fails on your wedding day,
+            <strong>Refunds:</strong> if the product fails on your event day,
             you get your money back — no argument, no process. Outside that,
             email us before the event and we&apos;ll sort it out.{" "}
             <em>

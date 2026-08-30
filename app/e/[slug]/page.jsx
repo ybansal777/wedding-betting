@@ -2,23 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { serverClient } from "../../../lib/supabase";
 import GuestGame from "../../../components/GuestGame";
-import FloralCorners from "../../../components/FloralCorners";
 import Header from "../../../components/Header";
 import Track from "../../../components/Track";
+import Atmosphere from "../../../components/Atmosphere";
 
 export async function generateMetadata({ params }) {
   const supabase = await serverClient();
   const { data: event } = await supabase
     .from("events")
-    .select("title, partner_a, partner_b")
+    .select("title, subtitle")
     .eq("slug", params.slug)
     .maybeSingle();
 
   if (!event) return { title: "Event not found" };
-  const who =
-    event.partner_a && event.partner_b
-      ? `${event.partner_a} & ${event.partner_b}`
-      : event.title;
+  const who = event.subtitle ? `${event.title} — ${event.subtitle}` : event.title;
   return {
     title: who,
     description: `Place your bets at ${who}. Play money, real bragging rights.`,
@@ -53,18 +50,18 @@ export default async function EventPage({ params }) {
 
   const shell = (children) => (
     <div
-      className="relative min-h-[100dvh]"
+      className="relative min-h-[100dvh] bg-cream"
+      data-event-shell
       data-preset={preset}
       style={accentStyle}
     >
-      <FloralCorners />
+      <Atmosphere />
       {/* Top of the guest funnel: a scan that reached the page. */}
       <Track name="event_viewed" eventId={event.id} />
       <main className="relative z-10 mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-4 pb-28">
         <Header
           title={event.title}
-          partnerA={event.partner_a}
-          partnerB={event.partner_b}
+          subtitle={event.subtitle}
           logoUrl={theme.logoUrl}
           bankroll={event.starting_bankroll}
         />
@@ -87,12 +84,16 @@ export default async function EventPage({ params }) {
 
   if (!guest) {
     return shell(
-      <section className="card animate-slide-up p-6 text-center">
-        <h2 className="font-serif text-2xl text-mauve-deep">
-          You&apos;re invited to play
+      <section className="card animate-slide-up p-6 text-center shadow-glow">
+        <p className="eyebrow mb-2 inline-flex items-center justify-center gap-2 text-sage">
+          <span className="live-dot" />
+          You&apos;re in
+        </p>
+        <h2 className="font-serif text-2xl tracking-tight text-mauve-deep">
+          Take your chips
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-mauve/85">
-          You&apos;ll get {event.starting_bankroll} coins to bet on how the day
+          You&apos;ll get {event.starting_bankroll} coins to bet on how the night
           unfolds. It takes about ten seconds to join.
         </p>
         <Link

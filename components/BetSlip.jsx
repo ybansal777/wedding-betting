@@ -6,12 +6,18 @@ import { returnOnWin, formatMoney } from "../lib/odds";
 // Floating drop-up bet slip. A circular button sits in the bottom-right; tapping
 // it opens a panel ABOVE summarizing every staged bet, with a "Place Bets"
 // button (and its confirmation step) underneath.
-export default function BetSlip({ items, total, onRemove, onPlace }) {
+export default function BetSlip({
+  items,
+  total,
+  onRemove,
+  onPlace,
+  embedded = false,
+}) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [placing, setPlacing] = useState(false);
 
-  if (items.length === 0) return null; // nothing staged → no slip
+  if (items.length === 0) return null;
 
   const potential = items.reduce(
     (s, it) => s + returnOnWin(it.wager, it.odds),
@@ -29,12 +35,15 @@ export default function BetSlip({ items, total, onRemove, onPlace }) {
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end">
-      {/* Drop-up panel */}
+    <div
+      className={`${
+        embedded ? "absolute" : "fixed"
+      } bottom-5 right-5 z-40 flex flex-col items-end`}
+    >
       {open && (
-        <div className="mb-3 w-[min(22rem,calc(100vw-2.5rem))] origin-bottom-right animate-pop-in rounded-3xl border border-blush/20 bg-cream-card shadow-lift">
-          <div className="flex items-center justify-between border-b border-mauve/10 px-5 py-3">
-            <h3 className="font-serif text-xl text-mauve-deep">Your Bet Slip</h3>
+        <div className="card mb-3 w-[min(22rem,calc(100vw-2.5rem))] origin-bottom-right animate-pop-in shadow-glow">
+          <div className="flex items-center justify-between border-b border-mauve-deep/10 px-5 py-3">
+            <h3 className="font-serif text-xl text-mauve-deep">Your slip</h3>
             <button
               onClick={() => setOpen(false)}
               aria-label="Close bet slip"
@@ -48,16 +57,16 @@ export default function BetSlip({ items, total, onRemove, onPlace }) {
             {items.map((it) => (
               <li
                 key={it.questionId}
-                className="rounded-2xl bg-cream-deep/40 px-3 py-2.5"
+                className="rounded-2xl bg-cream-deep/60 px-3 py-2.5 ring-1 ring-mauve-deep/10"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 text-xs text-mauve/70 line-clamp-1">
+                  <p className="min-w-0 flex-1 truncate text-xs text-mauve/70">
                     {it.prompt}
                   </p>
                   <button
                     onClick={() => onRemove(it.questionId)}
                     aria-label="Remove bet"
-                    className="shrink-0 text-xs text-blush-deep underline underline-offset-2 hover:opacity-80"
+                    className="shrink-0 text-xs text-blush underline underline-offset-2 hover:opacity-80"
                   >
                     remove
                   </button>
@@ -65,15 +74,17 @@ export default function BetSlip({ items, total, onRemove, onPlace }) {
                 <div className="mt-1 flex items-center justify-between">
                   <span className="font-serif text-lg text-mauve-deep">
                     {it.label}{" "}
-                    <span className="text-xs font-sans text-mauve/60">
-                      ({it.odds})
-                    </span>
+                    {it.showOdds && (
+                      <span className="font-mono text-xs text-gold">
+                        {it.odds}
+                      </span>
+                    )}
                   </span>
                   <span className="text-right text-sm">
-                    <span className="font-semibold text-mauve-deep">
+                    <span className="font-semibold tabular text-mauve-deep">
                       {formatMoney(it.wager)}
                     </span>
-                    <span className="block text-xs text-sage-deep">
+                    <span className="block font-mono text-xs text-sage">
                       → {formatMoney(returnOnWin(it.wager, it.odds))}
                     </span>
                   </span>
@@ -82,24 +93,24 @@ export default function BetSlip({ items, total, onRemove, onPlace }) {
             ))}
           </ul>
 
-          <div className="border-t border-mauve/10 px-5 py-3">
+          <div className="border-t border-mauve-deep/10 px-5 py-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-mauve/80">
-                Total staked
-                <span className="ml-1 font-bold text-mauve-deep">
+                Staked{" "}
+                <span className="ml-1 font-bold tabular text-mauve-deep">
                   {formatMoney(total)}
                 </span>
               </span>
               <span className="text-mauve/80">
-                Could win
-                <span className="ml-1 font-bold text-sage-deep">
+                Could win{" "}
+                <span className="ml-1 font-bold tabular text-sage">
                   {formatMoney(potential)}
                 </span>
               </span>
             </div>
 
             {confirming ? (
-              <div className="mt-3 rounded-2xl border-2 border-blush/40 bg-blush/5 p-3 animate-pop-in">
+              <div className="mt-3 animate-pop-in rounded-2xl border-2 border-blush/50 bg-blush/10 p-3">
                 <p className="text-center text-sm text-mauve-deep">
                   Place {items.length} bet{items.length === 1 ? "" : "s"} for{" "}
                   <b>{formatMoney(total)}</b>? Bets are <b>final</b>.
@@ -126,26 +137,25 @@ export default function BetSlip({ items, total, onRemove, onPlace }) {
                 onClick={() => setConfirming(true)}
                 className="btn-primary mt-3 w-full py-3 text-base"
               >
-                Place Bets
+                Place bets
               </button>
             )}
           </div>
         </div>
       )}
 
-      {/* Floating circular toggle */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={`Bet slip with ${items.length} bet${items.length === 1 ? "" : "s"}`}
-        className="relative flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-blush to-blush-deep text-cream-card shadow-lift transition active:scale-95"
+        className="slip-fab relative flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-blush to-blush-deep text-foam shadow-glow transition active:scale-95"
       >
         <span className="text-[10px] font-semibold uppercase tracking-wide opacity-90">
           Slip
         </span>
-        <span className="font-serif text-xl leading-none">
+        <span className="font-serif text-xl leading-none tabular">
           {formatMoney(total)}
         </span>
-        <span className="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-cream bg-mauve-deep px-1 text-xs font-bold text-cream-card">
+        <span className="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-cream bg-gold px-1 text-xs font-bold text-cream">
           {items.length}
         </span>
       </button>

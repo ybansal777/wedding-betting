@@ -8,7 +8,7 @@ import { serviceClient } from "../../../../lib/supabase";
 //   1. The signature is verified against the RAW body. Next.js must not parse
 //      it first, hence request.text() — a re-serialised body fails the check.
 //   2. apply_purchase() is idempotent on the session id. Stripe retries
-//      deliveries, and a couple must never be charged twice or see their tier
+//      deliveries, and a host must never be charged twice or see their tier
 //      applied twice.
 export const dynamic = "force-dynamic";
 

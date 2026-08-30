@@ -52,7 +52,7 @@ export default async function DashboardPage() {
             <li key={e.id}>
               <Link
                 href={`/dashboard/${e.id}`}
-                className="card block p-5 transition hover:shadow-lift"
+                className="card block p-5 transition hover:-translate-y-0.5 hover:shadow-lift"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <h2 className="font-serif text-2xl text-mauve-deep">
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
                   <span
                     className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       e.status === "live"
-                        ? "bg-sage/20 text-sage-deep"
+                        ? "bg-sage/20 text-sage"
                         : "bg-cream-deep text-mauve"
                     }`}
                   >

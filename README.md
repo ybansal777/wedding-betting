@@ -1,8 +1,10 @@
-# 💍 Wedding Bets
+# 🎉 Let's Bet
 
-A mobile-first prediction game for weddings. Any couple signs up, writes their own
-questions, sets their own odds, and shares one link. Guests get play money, bet on
-how the day unfolds, and climb a live leaderboard.
+A mobile-first prediction game for any event — weddings, bachelor/ette parties,
+birthdays, family reunions, or anything else with a crowd. Any host signs up,
+writes their own questions, sets their own odds (or an Over/Under line), and
+shares one link. Guests get play money, bet on how the day unfolds, and climb a
+live leaderboard.
 
 Built with **Next.js (App Router)**, **Tailwind**, and **Supabase** (Postgres +
 Auth), deployable to **Vercel**.
@@ -10,7 +12,7 @@ Auth), deployable to **Vercel**.
 > **Play money only.** Guests never buy anything and nothing can be cashed out.
 > The only payment is a host buying the software.
 
-Requirements live in [`.claude/prds/wedding-bets-saas.prd.md`](.claude/prds/wedding-bets-saas.prd.md).
+Requirements live in [`.claude/prds/lets-bet-saas.prd.md`](.claude/prds/lets-bet-saas.prd.md).
 
 ---
 
@@ -32,7 +34,7 @@ dashboard, and branded auth email templates (`docs/auth-emails.md`).
 
 ## Plans
 
-Two options, deliberately. A couple choosing between two *paid* tiers on the way
+Two options, deliberately. A host choosing between two *paid* tiers on the way
 to buying is a decision that costs conversions and buys nothing.
 
 | | Free | Premium · $39 |
@@ -47,6 +49,25 @@ to buying is a decision that costs conversions and buys nothing.
 | Results export (CSV) | — | ✓ |
 
 Price is still a hypothesis — run the smoke test before locking it.
+
+### Event types & bet types
+
+A host picks one of five event types at setup (`wedding`, `bachelor_bachelorette`,
+`birthday`, `family_reunion`, `other`) — it only changes which question templates
+are offered, nothing structural.
+
+Every question is one of two bet types:
+
+- **`guess`** — host-authored multiple choice with fixed American odds per option.
+- **`line`** — host sets a single numeric baseline (e.g. "12.5 songs before cake
+  cutting"); guests bet Over or Under at fixed odds; the host later reports the
+  real number and the winner (or a tied `push`, refunded in full) is computed
+  automatically. See `settle_question()` in `supabase/schema.sql`.
+
+A `line` question's `options` column is synthesized by the app as exactly
+`[{id:"over",...}, {id:"under",...}]`, so betting and payout code paths
+(`place_bets()`, the leaderboard, `BetCard.jsx`) never need to know the
+difference between the two bet types.
 
 ### Themes
 
@@ -70,7 +91,7 @@ every opacity utility in the app. The picker converts; the database validates.
 ## Tests
 
 ```bash
-./scripts/test-rls.sh      # 73 assertions, throwaway Docker Postgres
+./scripts/test-rls.sh      # 82 assertions, throwaway Docker Postgres
 ```
 
 CI runs the same suite plus the build on every push (`.github/workflows/ci.yml`).
@@ -104,8 +125,13 @@ Open **SQL Editor → New query**, paste [`supabase/schema.sql`](supabase/schema
 and run it. That single file is the whole database: every table, RLS policy,
 function, view and grant, plus the storage bucket for logo uploads.
 
-There is no migration chain to replay. Future incremental changes go in
-`supabase/migrations/`, applied after the base schema.
+There is no migration chain to replay for a fresh project. **If you already have
+a provisioned project from before the multi-event / bet-type generalization**,
+run [`supabase/migrations/0001_multi_event.sql`](supabase/migrations/0001_multi_event.sql)
+instead — it patches an existing database (new columns, the updated
+`settle_question()`) without dropping anything. Skipping this on an existing
+project surfaces as `PGRST204: Could not find the 'event_type' column ... in
+the schema cache` the moment the app touches an event.
 
 > The original app — Vite, single-tenant, its own schema — is untouched on the
 > `main` branch.
@@ -188,7 +214,7 @@ the question row, so a tampered client can't invent a better price.
 
 **Balances are stored, not derived.** `event_guests.balance` is updated
 incrementally on every bet and settlement. The original app recomputed the
-leaderboard by re-joining every bet on every read — fine for one wedding, ruinous
+leaderboard by re-joining every bet on every read — fine for one event, ruinous
 across concurrent events.
 
 **The leaderboard is public and cached.** It is byte-identical for all ~150 guests

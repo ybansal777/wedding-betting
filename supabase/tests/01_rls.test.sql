@@ -272,6 +272,100 @@ select public.ok(
   'clearing a winner unsets it');
 
 -- =============================================================================
+-- event_type and bet_type are constrained
+-- =============================================================================
+do $$
+begin
+  begin
+    insert into public.events (owner_id, slug, title, event_type)
+    values ('11111111-1111-1111-1111-111111111111', 'bad-event-type', 'Bad',
+            'quinceanera');
+    raise exception 'FAIL  an unknown event_type was accepted';
+  exception when check_violation then
+    raise notice '  PASS  an unknown event_type is rejected';
+  end;
+
+  begin
+    insert into public.questions (event_id, prompt, bet_type)
+    values ('aaaaaaaa-0000-0000-0000-000000000001', 'Bad bet type', 'parlay');
+    raise exception 'FAIL  an unknown bet_type was accepted';
+  exception when check_violation then
+    raise notice '  PASS  an unknown bet_type is rejected';
+  end;
+end;
+$$;
+
+-- =============================================================================
+-- Line bets: Over/Under, a computed (never client-supplied) winner, and a push
+-- =============================================================================
+insert into public.questions
+  (id, event_id, prompt, bet_type, line_value, options)
+values
+  ('cccccccc-0000-0000-0000-000000000010',
+   'aaaaaaaa-0000-0000-0000-000000000001',
+   'How many songs before cake cutting?', 'line', 10,
+   '[{"id":"over","label":"Over 10","odds":"-110"},
+     {"id":"under","label":"Under 10","odds":"-110"}]'::jsonb);
+
+select public.test_login('33333333-3333-3333-3333-333333333333');
+select public.place_bets(
+  'aaaaaaaa-0000-0000-0000-000000000001',
+  '[{"question_id":"cccccccc-0000-0000-0000-000000000010","pick":"under","wager":10}]'::jsonb);
+
+select public.ok(
+  (select balance from public.event_guests
+    where user_id = '33333333-3333-3333-3333-333333333333') = 80,
+  'a line wager is debited exactly like a guess wager');
+
+-- Actual value (8) lands below the line (10): Under wins.
+select public.test_login('11111111-1111-1111-1111-111111111111');
+select public.settle_question('cccccccc-0000-0000-0000-000000000010', null, 8);
+
+select public.ok(
+  (select winner from public.questions
+    where id = 'cccccccc-0000-0000-0000-000000000010') = 'under',
+  'the winner is computed from the actual value, never a client-passed pick');
+select public.ok(
+  (select actual_value from public.questions
+    where id = 'cccccccc-0000-0000-0000-000000000010') = 8,
+  'the actual value is stored');
+select public.ok(
+  (select balance from public.event_guests
+    where user_id = '33333333-3333-3333-3333-333333333333') = 99,
+  'Under wins at -110 on a 10 wager: 80 + 19 = 99');
+
+-- Re-settling with the actual value equal to the line is a push: the previous
+-- payout is reversed first, then every bet on the question is refunded in
+-- full, netting to zero against the stake taken at bet time.
+select public.settle_question('cccccccc-0000-0000-0000-000000000010', null, 10);
+
+select public.ok(
+  (select winner from public.questions
+    where id = 'cccccccc-0000-0000-0000-000000000010') = 'push',
+  'an exact tie settles as a push');
+select public.ok(
+  (select balance from public.event_guests
+    where user_id = '33333333-3333-3333-3333-333333333333') = 90,
+  'a push nets to zero: the prior win reverses (99-19=80), then refunds (80+10=90)');
+
+-- A guest cannot settle a line question either.
+select public.test_login('33333333-3333-3333-3333-333333333333');
+do $$
+begin
+  begin
+    perform public.settle_question('cccccccc-0000-0000-0000-000000000010', null, 12);
+    raise exception 'FAIL  a guest should not be able to settle a line question';
+  exception when others then
+    if sqlerrm like '%not_authorised%' then
+      raise notice '  PASS  a guest cannot settle a line question';
+    else
+      raise;
+    end if;
+  end;
+end;
+$$;
+
+-- =============================================================================
 -- public_leaderboard exposes only what it should
 -- =============================================================================
 reset role;
